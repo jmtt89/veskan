@@ -709,11 +709,17 @@ async function main() {
               bytes: r.bytes,
               version: r.version,
               // Siempre hay `parts`, aunque sea una sola: asi el cliente tiene
-              // un solo camino y no dos.
+              // un solo camino y no dos. Cada parte lleva DENTRO su cadena de
+              // deltas, que es donde la escribe `build-delta.mjs` y donde la
+              // lee el cliente.
+              //
+              // Aqui habia ademas un `deltas: []` a nivel de pais que nunca se
+              // rellenaba. No rompia nada -el cliente lee las partes- pero el
+              // indice publicado afirmaba que un catalogo no tenia deltas
+              // teniendolos, y eso es una trampa para quien lo lea despues.
               parts: r.parts ?? [
                 { file: `${r.country}.sqlite3`, from: null, to: null, products: r.count, bytes: r.bytes },
               ],
-              deltas: [],
             },
           ]),
       ),

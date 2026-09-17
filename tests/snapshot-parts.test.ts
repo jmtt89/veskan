@@ -145,3 +145,44 @@ describe('plan de actualización con varias partes', () => {
     expect(planCatalogo('v2', e).kind).toBe('up-to-date');
   });
 });
+
+describe('el indice no debe mentir sobre los deltas', () => {
+  it('partsOf saca la cadena de la parte, que es donde la escribe el pipeline', () => {
+    const entry = {
+      file: 'spain.sqlite3',
+      products: 341384,
+      bytes: 87212032,
+      version: '20260917T230636Z',
+      parts: [
+        {
+          file: 'spain.sqlite3',
+          from: null,
+          to: null,
+          products: 341384,
+          bytes: 87212032,
+          deltas: [
+            {
+              from: '20260917T222629Z',
+              to: '20260917T230636Z',
+              file: 'deltas/spain/20260917T230636Z.jsonl.gz',
+              bytes: 1738457,
+              upserts: 10904,
+              deletes: 0,
+            },
+          ],
+        },
+      ],
+    };
+    const partes = partsOf(entry);
+    expect(partes).toHaveLength(1);
+    expect(partes[0]!.deltas).toHaveLength(1);
+    expect(partes[0]!.deltas![0]!.upserts).toBe(10904);
+  });
+
+  it('sigue funcionando con un indice antiguo que solo tiene `file`', () => {
+    const partes = partsOf({ file: 'venezuela.sqlite3', products: 1523, bytes: 524288 });
+    expect(partes).toHaveLength(1);
+    expect(partes[0]!.file).toBe('venezuela.sqlite3');
+    expect(partes[0]!.from).toBeNull();
+  });
+});
