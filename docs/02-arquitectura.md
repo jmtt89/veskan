@@ -320,6 +320,136 @@ Es su comportamiento por defecto. En una PWA que debe funcionar sin conexión es
 - **Escaneo desde foto** (`capture="environment"`): en móvil dispara la cámara del sistema, que enfoca de verdad y captura a resolución completa. Es el camino más fiable, y con webcams de escritorio a veces el único que funciona.
 - Panel de diagnóstico en la propia app: motor en uso, resolución, fotogramas analizados, detecciones y descartes por dígito de control.
 
+## D12. El agujero de los nutrientes: `_100g` es un campo calculado
+
+Nuestros catálogos publicados salían con la nutrición casi vacía —España 20 de 339.562
+productos con energía— mientras la web de Open Food Facts mostraba esos mismos productos
+con su tabla completa. La causa no era el filtro por país ni el mapeador.
+
+**`<nutriente>_100g` no es un campo de origen.** El esquema oficial
+([`docs/api/ref/schemas/product_nutrition.yaml`](https://github.com/openfoodfacts/openfoodfacts-server/blob/main/docs/api/ref/schemas/product_nutrition.yaml))
+lo marca `readOnly: true` y lo describe así:
+
+> *"The normalized value of the nutrient for 100g (or 100ml for liquids), in a standard
+> unit [...] **This is computed from** the `nutrient` property, the serving size (if
+> `nutrient` is per serving), and the `nutrient`_unit field."*
+
+Lo mismo vale para `_serving` y `_value`. De las cinco variantes que guarda cada
+nutriente, **solo dos son de origen**: `<nutriente>` sin sufijo y `<nutriente>_unit`, que
+se leen según `nutrition_data_per`:
+
+| sufijo | significado (esquema oficial) | ¿de origen? |
+|---|---|---|
+| *(ninguno)* | *"What was entered in normalised unit"* | **sí** |
+| `_unit` | *"Unit of what was entered"* | **sí** |
+| `_100g` | normalizado por 100 g | no, calculado |
+| `_serving` | normalizado por ración | no, calculado |
+| `_value` | lo tecleado, en su propia unidad | no, calculado |
+
+En el volcado nocturno los campos calculados faltan a menudo, y hay un fallo abierto
+declarado en Open Food Facts sobre exactamente esto:
+[openfoodfacts-exports#61](https://github.com/openfoodfacts/openfoodfacts-exports/issues/61),
+*"las columnas están presentes, simplemente vienen vacías para la mayoría de las
+entradas"*. Nosotros leíamos **solo `_100g`**, así que tirábamos la información que sí
+persiste.
+
+**Medido sobre el volcado completo, 4.753.820 productos** (no sobre su cabecera, que está
+ordenada por código de barras y no representa al conjunto):
+
+| | productos con valor energético |
+|---|---|
+| leyendo solo `_100g` | 989.628 · **20,8%** |
+| con la escalera | 1.926.707 · **40,5%** |
+
+Cobertura por país, que además muestra por qué esto no se puede ajustar mirando un solo
+mercado:
+
+| país | cobertura | | país | cobertura |
+|---|---|---|---|---|
+| Estados Unidos | 72,8% | | España | 26,2% |
+| Japón | 71,4% | | Alemania | 26,8% |
+| Colombia | 52,9% | | India | 31,4% |
+| Venezuela | 41,4% | | México | 33,9% |
+| Francia | 34,5% | | Brasil | 14,1% |
+
+Solo el **0,1%** de los productos declara `no_nutrition_data`, así que la ausencia
+legítima es marginal: el hueco es el defecto de exportación.
+
+### La escalera
+
+`src/core/data/nutrients.mjs` lee cada nutriente bajando peldaños hasta dar con un valor.
+El orden prefiere lo que **ya viene por 100 g y no exige ninguna cuenta nuestra**:
+
+1. `_100g` — normalizado y por 100 g por definición.
+2. Sin sufijo, cuando `nutrition_data_per` son 100 g — campo de origen, sin conversión.
+3. `_value` + `_unit`, misma condición — con conversión de unidad.
+4. `nutriscore_data.components` — por 100 g por construcción, porque el Nutri-Score se
+   calcula siempre sobre 100 g. Es el único peldaño que queda cuando `nutriments` viene
+   vacío del todo, y **devuelve los mismos números que publica la API**: comprobado con
+   `0000101209159`, que en el volcado no tiene ningún `_100g` y del que la escalera
+   recupera 2.524 kJ, 32 g de azúcares y 0,01 g de sal, idénticos a la API.
+   **Aporta casi la mitad de toda la cobertura** (19,9% de los 40,5%), tanto como
+   `_100g` (20,5%).
+5. Escalado por ración — último recurso: `serving_quantity` es a su vez calculado.
+
+El módulo vive en `src/core/data/` y **lo comparten la aplicación y la tubería de datos**.
+Si cada lado leyera a su manera, un producto del catálogo descargado y el mismo producto
+resuelto por la API darían puntuaciones distintas.
+
+### Dos cotas que no son afinado, son física
+
+Verificar la escalera contra el volcado destapó que el problema también va en la otra
+dirección: **hay valores `_100g` publicados por Open Food Facts que son imposibles.** El
+máximo físico es la grasa pura, unos 3.770 kJ/100 g, y sobre el volcado completo:
+
+| energía `_100g` publicada | productos | |
+|---|---|---|
+| ≤ 3.770 kJ | 942.701 | 98,4% |
+| 3.770 – 4.000 | 1.399 | 0,1% |
+| 4.000 – 10.000 | 11.565 | 1,2% |
+| **> 10.000** | 2.596 | 0,3% |
+
+El máximo observado es **50.000.000 kJ/100 g** (código `8542024546710`). Son el 1,5% de
+los que traen energía: poco en proporción, pero cada uno arrastraría una puntuación
+entera.
+
+- **Ningún nutriente pasa de 100 g por cada 100 g de producto**, y la energía topa en
+  4.000 kJ/100 g (margen sobre la grasa pura). Un candidato fuera de cota no se acepta:
+  **se sigue bajando la escalera**, y a menudo un peldaño inferior sí tiene el valor
+  bueno.
+- **El factor `100 / serving_quantity` es uno solo para todo el producto.** Si al
+  aplicarlo a la energía sale un imposible, el factor está mal, y entonces lo está para
+  todos los nutrientes. Sin esta regla se rechazaba 117.200 kJ/100 g y se aceptaba a la
+  vez 75 g de sal por 100 g del mismo producto, salidos del mismo cálculo.
+
+Ambas reglas se justifican con una constante física, no con lo que se observa en un
+mercado concreto, y por eso valen igual para cualquier país.
+
+### Un valor imposible no se descarta: se enseña
+
+Rechazar un dato para puntuar no es lo mismo que fingir que no existe. Un hueco vacío le
+dice al usuario «nadie lo ha rellenado»; un 19.200 kJ/100 g le dice «esto está mal
+registrado, mira el envase», que es algo que puede resolver **teniendo el producto en la
+mano**.
+
+Por eso la escalera devuelve, además del valor bueno, los que rechazó:
+
+```json
+[{"n": "energy_kj", "v": 19200, "u": "kJ", "m": "max", "s": "nutriscore"}]
+```
+
+Se guardan en la columna `implausible` del snapshot —`NULL` en la inmensa mayoría de
+filas— y viajan hasta la ficha:
+
+- **`s` presente** → un peldaño inferior cubrió el hueco. La puntuación es fiable y no se
+  muestra aviso.
+- **`s` ausente** → no hay valor utilizable. La ficha muestra un bloque de advertencia
+  **fuera del desplegable de certeza**, porque es accionable: nombra el nutriente, la
+  cifra que consta, por qué es imposible, y ofrece corregirlo en Open Food Facts. El
+  motor añade además una nota a la confianza y el nivel deja de poder ser «alta».
+
+Nunca se puntúa con un valor imposible: un 19.200 kJ/100 g arrastraría la nota entera.
+
 ## Logotipo Nutri-Score: marca registrada, con vía para aplicaciones
 
 Se muestra el **logotipo oficial** de Santé publique France, servido desde la propia

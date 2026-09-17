@@ -59,6 +59,28 @@ export function buildAdditiveClassMap(taxonomy: AdditiveTaxonomy): Map<string, s
   return map;
 }
 
+/** Nombres de nutriente para los mensajes, con las claves de la escalera. */
+const NOMBRE_NUTRIENTE: Record<string, string> = {
+  energy_kj: 'valor energetico',
+  energy_kcal: 'valor energetico',
+  fat: 'grasas totales',
+  saturated_fat: 'grasas saturadas',
+  trans_fat: 'grasas trans',
+  carbohydrates: 'hidratos de carbono',
+  sugars: 'azucares',
+  fiber: 'fibra',
+  proteins: 'proteinas',
+  salt: 'sal',
+  sodium: 'sodio',
+  fvl: 'porcentaje de frutas, verduras y legumbres',
+};
+
+/** Redondea sin arrastrar decimales inutiles y pone la unidad. */
+function formatearCantidad(valor: number, unidad: string): string {
+  const n = valor >= 100 ? Math.round(valor) : Math.round(valor * 10) / 10;
+  return `${n.toLocaleString('es')} ${unidad}`.trim();
+}
+
 /**
  * Evalua cuanto podemos confiar en el resultado.
  *
@@ -96,6 +118,21 @@ function assessConfidence(product: Product, hasNova: boolean): Confidence {
   }
   if (!hasNova) {
     notes.push('No se ha podido determinar el grado de procesamiento (NOVA).');
+  }
+
+  /**
+   * Valores imposibles: el dato existe, pero no sirve. Decirlo es mas util que
+   * mostrar un hueco, porque el usuario puede resolverlo mirando el envase; y
+   * es obligatorio no puntuar con ellos, porque un 19.200 kJ/100 g arrastraria
+   * la puntuacion entera.
+   */
+  const sinSustituto = (product.implausibleNutriments ?? []).filter((x) => !x.replacedBy);
+  for (const x of sinSustituto) {
+    notes.push(
+      `El valor de ${NOMBRE_NUTRIENTE[x.key] ?? x.key} que consta en Open Food Facts ` +
+        `(${formatearCantidad(x.value, x.unit)} por 100 g) es imposible, asi que no se ha usado. ` +
+        'Comprueba la etiqueta del producto para tener una puntuacion fiable.',
+    );
   }
 
   let level: Confidence['level'];

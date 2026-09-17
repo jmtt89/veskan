@@ -27,18 +27,30 @@
 import type {
   CategoryFlags,
   DataSource,
+  ImplausibleNutriment,
   Nutriments,
   NutriscoreGrade,
   Product,
   ProductKind,
 } from '../types.js';
 import type { NutriscoreInput } from '../scoring/nutriscore2023.js';
+// La escalera vive en `scripts/lib/` y no aqui a proposito: ese arbol se copia
+// tal cual al repositorio de datos (veskan-data), que construye los catalogos.
+// Si la aplicacion tuviera su propia copia, el catalogo descargado y la API
+// podrian leer distinto el mismo producto y dar puntuaciones distintas.
+import { leerNutrientes } from '../../../scripts/lib/nutrients.mjs';
 
 export const OFF_BASE = 'https://world.openfoodfacts.org';
 export const OBF_BASE = 'https://world.openbeautyfacts.org';
 
 /** Campos que pedimos siempre. Acotarlos baja la respuesta de ~50 kB a ~2.5 kB. */
 const PRODUCT_FIELDS = [
+  // `nutrition_data_per`, `serving_quantity` y `no_nutrition_data` son los
+  // campos de ORIGEN de los nutrientes: los `_100g` son calculados y no
+  // siempre vienen. Ver `nutrients.mjs`.
+  'nutrition_data_per',
+  'serving_quantity',
+  'no_nutrition_data',
   'code',
   'product_name',
   'product_name_es',
@@ -238,6 +250,15 @@ export interface OffRawProduct {
   countries_tags?: string[];
   ingredients_analysis_tags?: string[];
   nutriments?: Record<string, number | string | undefined>;
+  /**
+   * Base de los valores sin sufijo de `nutriments`. Sin este campo no se
+   * pueden leer los productos cuyos `_100g` -que son calculados- no vienen.
+   */
+  nutrition_data_per?: 'serving' | '100g';
+  /** Racion en gramos, ya calculada por Open Food Facts. */
+  serving_quantity?: number | string;
+  /** "on" cuando el producto declara no llevar tabla nutricional. */
+  no_nutrition_data?: string | boolean;
   nutriscore_data?: OffNutriscoreData;
   nutriscore_grade?: string;
   nova_group?: number;
@@ -249,12 +270,6 @@ export interface OffRawProduct {
 // ---------------------------------------------------------------------------
 // Traduccion a nuestro dominio
 // ---------------------------------------------------------------------------
-
-function num(v: unknown): number | undefined {
-  if (v === undefined || v === null || v === '') return undefined;
-  const n = typeof v === 'number' ? v : Number(v);
-  return Number.isFinite(n) ? n : undefined;
-}
 
 /**
  * Las banderas de categoria llegan de OFF de forma inconsistente: unas veces
@@ -269,31 +284,44 @@ function truthy(v: number | boolean | string | undefined): boolean {
 }
 
 export function extractNutriments(raw: OffRawProduct): Nutriments {
-  const n = raw.nutriments ?? {};
-  const energyKj = num(n['energy-kj_100g']) ?? num(n['energy_100g']);
-  const energyKcal = num(n['energy-kcal_100g']);
-  const salt = num(n['salt_100g']);
-  const sodiumG = num(n['sodium_100g']);
+  // La lectura vive en `nutrients.mjs`, compartida con la tuberia de datos: si
+  // cada lado leyera a su manera, un producto del catalogo descargado y el
+  // mismo producto resuelto por la API darian puntuaciones distintas.
+  const { valores } = leerNutrientes(raw);
+  const v = (x: number | null): number | undefined => (x === null ? undefined : x);
 
   return {
-    energyKj,
-    // Si falta kcal pero hay kJ, se convierte (1 kcal = 4.184 kJ).
-    energyKcal: energyKcal ?? (energyKj !== undefined ? energyKj / 4.184 : undefined),
-    fat: num(n['fat_100g']),
-    saturatedFat: num(n['saturated-fat_100g']),
-    transFat: num(n['trans-fat_100g']),
-    carbohydrates: num(n['carbohydrates_100g']),
-    sugars: num(n['sugars_100g']),
-    fiber: num(n['fiber_100g']),
-    proteins: num(n['proteins_100g']),
-    // OFF expresa `sodium_100g` en gramos; nuestro dominio lo guarda en mg.
-    salt: salt ?? (sodiumG !== undefined ? sodiumG * 2.5 : undefined),
-    sodium: sodiumG !== undefined ? sodiumG * 1000 : salt !== undefined ? (salt / 2.5) * 1000 : undefined,
-    fruitsVegetablesLegumes:
-      num(n['fruits-vegetables-legumes-estimate-from-ingredients_100g']) ??
-      num(n['fruits-vegetables-nuts_100g']) ??
-      num(n['fruits-vegetables-nuts-estimate_100g']),
+    energyKj: v(valores.energy_kj),
+    energyKcal: v(valores.energy_kcal),
+    fat: v(valores.fat),
+    saturatedFat: v(valores.saturated_fat),
+    transFat: v(valores.trans_fat),
+    carbohydrates: v(valores.carbohydrates),
+    sugars: v(valores.sugars),
+    fiber: v(valores.fiber),
+    proteins: v(valores.proteins),
+    salt: v(valores.salt),
+    // La escalera devuelve gramos; nuestro dominio guarda el sodio en mg.
+    sodium: valores.sodium === null ? undefined : valores.sodium * 1000,
+    fruitsVegetablesLegumes: v(valores.fvl),
   };
+}
+
+/**
+ * Nutrientes que Open Food Facts registra con un valor imposible. No se tiran:
+ * la ficha los muestra para que el usuario sepa que el dato existe y que hay
+ * que comprobarlo en el envase. Ver `nutrients.mjs`.
+ */
+export function extractImplausible(raw: OffRawProduct): ImplausibleNutriment[] | undefined {
+  const { imposibles } = leerNutrientes(raw);
+  if (!imposibles.length) return undefined;
+  return imposibles.map((x) => ({
+    key: x.nutriente,
+    value: x.valor,
+    unit: x.unidad,
+    reason: x.motivo === 'racion-incoherente' ? 'racion' : 'max',
+    replacedBy: x.sustituido ?? undefined,
+  }));
 }
 
 export function extractCategoryFlags(raw: OffRawProduct): CategoryFlags {
@@ -351,6 +379,7 @@ export function offProductToProduct(raw: OffRawProduct, source: DataSource): Pro
     categoryTags: raw.categories_tags ?? [],
     countryTags: raw.countries_tags ?? [],
     nutriments: extractNutriments(raw),
+    implausibleNutriments: extractImplausible(raw),
     novaGroup:
       raw.nova_group !== undefined && raw.nova_group >= 1 && raw.nova_group <= 4
         ? (raw.nova_group as 1 | 2 | 3 | 4)

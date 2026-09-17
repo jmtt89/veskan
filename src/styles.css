@@ -2513,3 +2513,50 @@ button.link,
   grid-template-columns: 1fr 1fr;
   gap: 10px;
 }
+
+/* Aviso de valores imposibles.
+   Usa el color de advertencia, no el de error: el producto se puntua igual,
+   solo que con un dato menos y con algo que el usuario puede resolver mirando
+   el envase. Contraste comprobado: --warning sobre --warning-bg supera 4.5:1
+   en los tres temas. */
+.implausible {
+  margin: 12px 0;
+  padding: 12px 14px;
+  border: 1px solid var(--warning);
+  border-radius: var(--radius-tile);
+  background: var(--warning-bg);
+}
+
+.implausible h3 {
+  margin: 0 0 4px;
+  color: var(--warning);
+  font: 700 0.88rem var(--font);
+}
+
+.implausible p {
+  margin: 0;
+  font: 400 0.81rem/1.45 var(--font);
+  color: var(--ink);
+}
+
+.implausible ul {
+  margin: 8px 0;
+  padding-left: 18px;
+  font: 400 0.81rem/1.5 var(--font);
+  color: var(--ink);
+}
+
+.implausible-why {
+  color: var(--ink-2);
+}
+
+.implausible-action {
+  margin-top: 8px;
+  font-weight: 600;
+}
+
+.implausible-action a {
+  display: inline-block;
+  margin-left: 4px;
+  color: var(--warning);
+}

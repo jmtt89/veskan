@@ -898,6 +898,73 @@ export interface ResultUi {
 }
 
 /** Arma el resultado completo: veredicto, razones y evidencia, en ese orden. */
+/** Nombres de nutriente para el aviso, con las claves de la escalera. */
+const NOMBRE_NUTRIENTE: Record<string, string> = {
+  energy_kj: 'valor energético',
+  energy_kcal: 'valor energético',
+  fat: 'grasas totales',
+  saturated_fat: 'grasas saturadas',
+  trans_fat: 'grasas trans',
+  carbohydrates: 'hidratos de carbono',
+  sugars: 'azúcares',
+  fiber: 'fibra',
+  proteins: 'proteínas',
+  salt: 'sal',
+  sodium: 'sodio',
+  fvl: 'frutas, verduras y legumbres',
+};
+
+/**
+ * Aviso de valores imposibles.
+ *
+ * Open Food Facts tiene productos con cifras que no pueden ser: 19.200 kJ por
+ * 100 g cuando el maximo fisico -grasa pura- son unos 3.770. No se usan para
+ * puntuar, porque arrastrarian la nota entera, pero tampoco se ocultan: decir
+ * que el dato consta y que hay que mirar el envase es mas util que presentar un
+ * hueco como si nadie lo hubiera rellenado nunca.
+ *
+ * Va fuera del desplegable de certeza a proposito: es accionable, y el usuario
+ * tiene el producto en la mano.
+ */
+export function implausibleWarning(product: Product): SafeHtml {
+  const xs = (product.implausibleNutriments ?? []).filter((x) => !x.replacedBy);
+  if (!xs.length) return raw('');
+
+  const cantidad = (v: number, u: string): string => {
+    const n = v >= 100 ? Math.round(v) : Math.round(v * 10) / 10;
+    return `${n.toLocaleString('es')} ${u}`.trim();
+  };
+
+  return html`
+    <section class="implausible" role="note" aria-labelledby="implausible-title">
+      <h3 id="implausible-title">Hay datos que no cuadran</h3>
+      <p>
+        Estos valores constan en Open Food Facts pero son imposibles, así que no se han
+        usado para puntuar:
+      </p>
+      <ul>
+        ${xs.map(
+          (x) => html`<li>
+            <strong>${NOMBRE_NUTRIENTE[x.key] ?? x.key}</strong>:
+            ${cantidad(x.value, x.unit)} por 100 g
+            ${x.reason === 'racion'
+              ? raw('<span class="implausible-why">(la ración declarada no cuadra)</span>')
+              : raw('<span class="implausible-why">(supera el máximo físico)</span>')}
+          </li>`,
+        )}
+      </ul>
+      <p class="implausible-action">
+        Comprueba la etiqueta del envase para tener una puntuación fiable.
+        ${product.editUrl
+          ? html`<a href="${product.editUrl}" target="_blank" rel="noopener noreferrer"
+              >Corregirlo en Open Food Facts</a
+            >`
+          : raw('')}
+      </p>
+    </section>
+  `;
+}
+
 export function assessmentView(assessment: Assessment, ui: ResultUi): SafeHtml {
   if (assessment.kind === 'cosmetic') {
     return cosmeticView(assessment.product, assessment.assessment);
@@ -905,6 +972,7 @@ export function assessmentView(assessment: Assessment, ui: ResultUi): SafeHtml {
   const { product, score } = assessment;
   return html`
     ${verdict(product, score)} ${confidenceRow(score, ui.confidenceOpen)}
-    ${reasonsBento(score)} ${evidence(product, score, ui.evidenceOpen)}
+    ${implausibleWarning(product)} ${reasonsBento(score)}
+    ${evidence(product, score, ui.evidenceOpen)}
   `;
 }

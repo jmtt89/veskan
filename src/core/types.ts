@@ -15,6 +15,23 @@ export type ProductKind = 'food' | 'beverage' | 'cosmetic' | 'petfood' | 'other'
  * Nutrientes por 100 g o 100 ml. Unidades fijadas para evitar la clase de
  * error mas cara de esta app: mezclar mg con g.
  */
+/**
+ * Un nutriente que consta en Open Food Facts con un valor fisicamente
+ * imposible. Se conserva a proposito: decir "consta 19.200 kJ/100 g, imposible,
+ * comprueba el envase" informa mas que dejar el hueco vacio.
+ */
+export interface ImplausibleNutriment {
+  /** Clave del nutriente, tal como la nombra la escalera (`energy_kj`, `salt`...). */
+  key: string;
+  /** Valor registrado, ya por 100 g y en unidad normalizada. */
+  value: number;
+  unit: string;
+  /** `max`: supera el maximo fisico. `racion`: el escalado por racion no cuadra. */
+  reason: 'max' | 'racion';
+  /** Peldano que si dio un valor utilizable, si alguno lo hizo. */
+  replacedBy?: string;
+}
+
 export interface Nutriments {
   /** kJ / 100 g */
   energyKj?: number;
@@ -61,6 +78,11 @@ export interface Product {
   offNutriscoreScore?: number;
   /** Banderas de categoria que Nutri-Score necesita y OFF ya resuelve */
   categoryFlags: CategoryFlags;
+  /**
+   * Nutrientes con un valor imposible en Open Food Facts. Vacio o ausente en
+   * el caso normal. Ver `ImplausibleNutriment`.
+   */
+  implausibleNutriments?: ImplausibleNutriment[];
   source: DataSource;
   /** Epoch ms de la ultima edicion conocida del dato */
   lastModified?: number;

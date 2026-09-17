@@ -7,7 +7,7 @@
  * logico (el pais) y mantiene su propia conexion alli.
  */
 
-import type { Product } from '../../types.js';
+import type { ImplausibleNutriment, Product } from '../../types.js';
 import type { OpenStrategy } from './sqlite.worker.js';
 import { send, type ProgressHandler } from './worker-pool.js';
 import type { DeltaFile } from './delta-sync.js';
@@ -183,6 +183,32 @@ interface SnapshotRow {
   is_red_meat: number | null;
   last_modified: number | null;
   popularity: number | null;
+  implausible: string | null;
+}
+
+/**
+ * Los valores imposibles se guardan como JSON compacto para no anadir una
+ * columna por nutriente. Si viniera corrupto se ignora: es informacion
+ * adicional, nunca motivo para que la ficha no se muestre.
+ */
+function parseImplausible(raw: string | null): ImplausibleNutriment[] | undefined {
+  if (!raw) return undefined;
+  try {
+    const xs = JSON.parse(raw);
+    if (!Array.isArray(xs)) return undefined;
+    const out = xs
+      .filter((x) => x && typeof x.n === 'string' && Number.isFinite(x.v))
+      .map((x) => ({
+        key: x.n as string,
+        value: x.v as number,
+        unit: typeof x.u === 'string' ? x.u : '',
+        reason: x.m === 'racion' ? ('racion' as const) : ('max' as const),
+        replacedBy: typeof x.s === 'string' ? x.s : undefined,
+      }));
+    return out.length ? out : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 const splitList = (v: string | null): string[] =>
@@ -238,6 +264,7 @@ function rowToProduct(row: SnapshotRow): Product {
       isFatOilNutsSeeds: Boolean(row.is_fat_oil_nuts_seeds),
       isRedMeat: Boolean(row.is_red_meat),
     },
+    implausibleNutriments: parseImplausible(row.implausible),
     source: 'snapshot',
     lastModified: nn(row.last_modified),
     fetchedAt: Date.now(),
