@@ -466,6 +466,34 @@ describe('NOVA: etiquetas reales, con tildes y en español de América', () => {
     expect(m?.value).toContain('PROTEÍNA');
   });
 
+  it('reconoce las etiquetas en inglés', () => {
+    // No es un extra para Estados Unidos: el 19,3% del catálogo mexicano lleva
+    // prefijo GS1 estadounidense, y esos productos traen la etiqueta en inglés.
+    for (const texto of [
+      'SUGAR, HIGH FRUCTOSE CORN SYRUP, SALT',
+      'Wheat flour, maltodextrin, salt',
+      'Modified corn starch, water',
+      'Partially hydrogenated vegetable oil',
+      'Soy protein isolate, water',
+      'Sugar, natural flavors, citric acid',
+      'Cocoa butter, soy lecithin',
+      'Mono- and diglycerides of fatty acids',
+      'Yeast extract, salt',
+    ]) {
+      expect(inferNova(conIngredientes(texto), classes)?.markers.length, texto).toBeGreaterThan(0);
+    }
+  });
+
+  it('no marca comida sin procesar por estar en inglés', () => {
+    for (const texto of [
+      'Tomatoes, water, salt',
+      'Organic rolled oats',
+      'Pasteurized milk, live cultures',
+    ]) {
+      expect(inferNova(conIngredientes(texto), classes), texto).toBeUndefined();
+    }
+  });
+
   it('no marca un alimento sin procesar por llevar tildes', () => {
     expect(inferNova(conIngredientes('Tomate, sal, aceite de oliva virgen'), classes)).toBeUndefined();
     expect(inferNova(conIngredientes('Leche pasteurizada, fermentos lácticos'), classes)).toBeUndefined();

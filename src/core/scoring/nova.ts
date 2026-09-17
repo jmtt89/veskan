@@ -90,6 +90,36 @@ const ULTRA_PROCESSING_INGREDIENT_PATTERNS = [
   /dextrosa/i,
   /almidon(es)? modificad[oa]/i,
   /suero en polvo/i,
+
+  /*
+   * Y en ingles.
+   *
+   * No es un extra para Estados Unidos: es el caso central de esta aplicacion.
+   * Medido sobre los catalogos publicados, el 19,3% del catalogo mexicano y el
+   * 13,8% del venezolano llevan prefijo GS1 estadounidense, y esos productos
+   * traen la etiqueta en ingles. Con los patrones solo en espanol, de los
+   * 67.550 productos estadounidenses que tienen ingredientes pero no NOVA
+   * reconociamos 110; con estos, 1.523.
+   *
+   * Que el salto sea modesto no es culpa de la lista: el 97,6% restante trae
+   * el texto de ingredientes mal leido por OCR -- «WEAT FROAR (ENICHED N FN
+   * BARLEY MALT» --, que es exactamente por lo que Open Food Facts tampoco
+   * pudo clasificarlos. Ninguna lista de patrones arregla eso.
+   */
+  /(glucose|fructose|corn) syrup/i,
+  /maltodextrin\b/i,
+  /modified (corn |food |potato |tapioca )?starch/i,
+  /(partially )?hydrogenated (vegetable )?(oil|fat)/i,
+  /(soy|whey|milk|pea) protein (isolate|concentrate|hydrolysate)/i,
+  /(natural|artificial) flavor(s|ing)?/i,
+  /artificial color(s|ing)?/i,
+  /flavou?r enhancer/i,
+  /yeast extract/i,
+  /caseinate/i,
+  /\bdextrose\b/i,
+  /invert sugar/i,
+  /soy lecithin/i,
+  /mono.{0,3}and diglycerides/i,
 ];
 
 export interface NovaInference {
