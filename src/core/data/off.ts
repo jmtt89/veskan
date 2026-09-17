@@ -1,0 +1,448 @@
+/**
+ * Capa L2: Open Food Facts / Open Beauty Facts en vivo.
+ *
+ * Datos verificados contra el servicio real el 2026-09-16:
+ *  - Responde `access-control-allow-origin: *`, por lo que se llama directo
+ *    desde el navegador sin proxy ni backend.
+ *  - Limite: 15 req/min/IP en producto, 10 req/min/IP en busqueda. Superarlo
+ *    devuelve 503, comprobado empiricamente.
+ *  - Las lecturas NO requieren autenticacion: no hay claves ni cuentas.
+ *
+ * Identificacion de la aplicacion
+ * -------------------------------
+ * OFF pide que cada app diga como se llama, para distinguir aplicaciones reales
+ * de bots. No es autenticacion: no se verifica nada y no hay secreto alguno.
+ *
+ * Lo habitual es la cabecera `User-Agent`, pero es una "forbidden header name"
+ * de la especificacion Fetch: el navegador la descarta EN SILENCIO. Comprobado:
+ * `new Request(url, {headers:{'User-Agent':'x'}}).headers.get('user-agent')`
+ * devuelve null. Por eso el nombre viaja como parametro de consulta, que si
+ * llega.
+ *
+ * No se envia ninguna direccion de correo. Nombre y version bastan para que OFF
+ * identifique el trafico, y asi no se publica el dato personal de nadie en un
+ * repositorio abierto.
+ */
+
+import type {
+  CategoryFlags,
+  DataSource,
+  Nutriments,
+  NutriscoreGrade,
+  Product,
+  ProductKind,
+} from '../types.js';
+import type { NutriscoreInput } from '../scoring/nutriscore2023.js';
+
+export const OFF_BASE = 'https://world.openfoodfacts.org';
+export const OBF_BASE = 'https://world.openbeautyfacts.org';
+
+/** Campos que pedimos siempre. Acotarlos baja la respuesta de ~50 kB a ~2.5 kB. */
+const PRODUCT_FIELDS = [
+  'code',
+  'product_name',
+  'product_name_es',
+  'generic_name',
+  'brands',
+  'quantity',
+  'image_front_url',
+  'image_front_small_url',
+  'ingredients_text',
+  'ingredients_text_es',
+  'additives_tags',
+  'allergens_tags',
+  'labels_tags',
+  'categories_tags',
+  'countries_tags',
+  'nutriments',
+  'nutriscore_data',
+  'nutriscore_grade',
+  'nova_group',
+  'nova_groups_tags',
+  'ingredients_analysis_tags',
+  'last_modified_t',
+].join(',');
+
+const COSMETIC_FIELDS = [
+  'code',
+  'product_name',
+  'brands',
+  'quantity',
+  'image_front_url',
+  'image_front_small_url',
+  'ingredients_text',
+  'ingredients',
+  'allergens_tags',
+  'labels_tags',
+  'categories_tags',
+  'countries_tags',
+  'periods_after_opening',
+  'last_modified_t',
+].join(',');
+
+export interface OffClientOptions {
+  /** Nombre con el que la app se presenta ante OFF. Publico, no es un secreto. */
+  appName: string;
+  appVersion: string;
+  /**
+   * URL publica del proyecto. Opcional. Sirve como via de contacto en los
+   * entornos donde la cabecera `User-Agent` si se puede fijar (Node), en lugar
+   * de exponer el correo de una persona.
+   */
+  projectUrl?: string;
+  /** Idioma de los campos localizados */
+  lang?: string;
+  fetchImpl?: typeof fetch;
+  /** ms */
+  timeout?: number;
+}
+
+export class OffRateLimitError extends Error {
+  constructor(public readonly retryAfterMs: number) {
+    super('Open Food Facts ha limitado la tasa de peticiones');
+    this.name = 'OffRateLimitError';
+  }
+}
+
+export class OffNotFoundError extends Error {
+  constructor(public readonly barcode: string) {
+    super(`Producto ${barcode} no encontrado`);
+    this.name = 'OffNotFoundError';
+  }
+}
+
+/**
+ * Cliente con limitador de tasa propio.
+ *
+ * Nos auto-limitamos por debajo del limite del servidor en lugar de esperar al
+ * 503: es mas educado con un servicio donado y evita que el usuario vea
+ * errores que podemos prevenir.
+ */
+export class OffClient {
+  private readonly appName: string;
+  private readonly appVersion: string;
+  private readonly userAgent: string;
+  private readonly lang: string;
+  private readonly fetchImpl: typeof fetch;
+  private readonly timeout: number;
+  private recentCalls: number[] = [];
+  private static readonly MAX_CALLS_PER_MINUTE = 12; // margen bajo el limite real de 15
+
+  constructor(opts: OffClientOptions) {
+    this.appName = opts.appName;
+    this.appVersion = opts.appVersion;
+    // En el navegador esta cabecera se descarta; en Node si se envia.
+    this.userAgent = `${opts.appName}/${opts.appVersion}${
+      opts.projectUrl ? ` (+${opts.projectUrl})` : ''
+    }`;
+    this.lang = opts.lang ?? 'es';
+    this.fetchImpl = opts.fetchImpl ?? globalThis.fetch.bind(globalThis);
+    this.timeout = opts.timeout ?? 12_000;
+  }
+
+  private async throttle(): Promise<void> {
+    const now = Date.now();
+    this.recentCalls = this.recentCalls.filter((t) => now - t < 60_000);
+    if (this.recentCalls.length >= OffClient.MAX_CALLS_PER_MINUTE) {
+      const oldest = this.recentCalls[0]!;
+      const waitMs = 60_000 - (now - oldest) + 250;
+      throw new OffRateLimitError(waitMs);
+    }
+    this.recentCalls.push(now);
+  }
+
+  async getProduct(barcode: string, kind: 'food' | 'cosmetic' = 'food'): Promise<Product> {
+    await this.throttle();
+    const base = kind === 'cosmetic' ? OBF_BASE : OFF_BASE;
+    const fields = kind === 'cosmetic' ? COSMETIC_FIELDS : PRODUCT_FIELDS;
+    const params = new URLSearchParams({
+      fields,
+      lc: this.lang,
+      // Identificacion de la app: publica, sin datos personales.
+      app_name: this.appName,
+      app_version: this.appVersion,
+    });
+    const url = `${base}/api/v2/product/${encodeURIComponent(barcode)}.json?${params}`;
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), this.timeout);
+    try {
+      const res = await this.fetchImpl(url, {
+        headers: { 'User-Agent': this.userAgent, Accept: 'application/json' },
+        signal: controller.signal,
+      });
+      if (res.status === 429 || res.status === 503) throw new OffRateLimitError(30_000);
+      if (res.status === 404) throw new OffNotFoundError(barcode);
+      if (!res.ok) throw new Error(`Open Food Facts respondio ${res.status}`);
+      const body = (await res.json()) as OffApiResponse;
+      if (body.status !== 1 || !body.product) throw new OffNotFoundError(barcode);
+      return offProductToProduct(
+        body.product,
+        kind === 'cosmetic' ? 'openbeautyfacts' : 'openfoodfacts',
+      );
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Tipos crudos de la API
+// ---------------------------------------------------------------------------
+
+interface OffApiResponse {
+  status: number;
+  product?: OffRawProduct;
+}
+
+export interface OffNutriscoreComponent {
+  id: string;
+  value: number | null;
+  points: number;
+  points_max?: number;
+  unit?: string;
+}
+
+export interface OffNutriscoreData {
+  score?: number;
+  grade?: string;
+  negative_points?: number;
+  positive_points?: number;
+  is_beverage?: number | boolean | string;
+  is_water?: number | boolean | string;
+  is_cheese?: number | boolean | string;
+  is_fat_oil_nuts_seeds?: number | boolean | string;
+  is_red_meat_product?: number | boolean | string;
+  count_proteins?: number | boolean | string;
+  components?: {
+    negative?: OffNutriscoreComponent[];
+    positive?: OffNutriscoreComponent[];
+  };
+}
+
+export interface OffRawProduct {
+  code: string;
+  product_name?: string;
+  product_name_es?: string;
+  generic_name?: string;
+  brands?: string;
+  quantity?: string;
+  image_front_url?: string;
+  image_front_small_url?: string;
+  ingredients_text?: string;
+  ingredients_text_es?: string;
+  additives_tags?: string[];
+  allergens_tags?: string[];
+  labels_tags?: string[];
+  categories_tags?: string[];
+  countries_tags?: string[];
+  ingredients_analysis_tags?: string[];
+  nutriments?: Record<string, number | string | undefined>;
+  nutriscore_data?: OffNutriscoreData;
+  nutriscore_grade?: string;
+  nova_group?: number;
+  nova_groups_tags?: string[];
+  last_modified_t?: number;
+  periods_after_opening?: string;
+}
+
+// ---------------------------------------------------------------------------
+// Traduccion a nuestro dominio
+// ---------------------------------------------------------------------------
+
+function num(v: unknown): number | undefined {
+  if (v === undefined || v === null || v === '') return undefined;
+  const n = typeof v === 'number' ? v : Number(v);
+  return Number.isFinite(n) ? n : undefined;
+}
+
+/**
+ * Las banderas de categoria llegan de OFF de forma inconsistente: unas veces
+ * como numero `1`, otras como cadena `"1"`, otras ausentes. Comprobado en
+ * datos reales: `is_cheese: "1"`. Normalizar aqui evita que una regla del
+ * algoritmo se desactive en silencio.
+ */
+function truthy(v: number | boolean | string | undefined): boolean {
+  if (v === true || v === 1) return true;
+  if (typeof v === 'string') return v === '1' || v.toLowerCase() === 'true';
+  return false;
+}
+
+export function extractNutriments(raw: OffRawProduct): Nutriments {
+  const n = raw.nutriments ?? {};
+  const energyKj = num(n['energy-kj_100g']) ?? num(n['energy_100g']);
+  const energyKcal = num(n['energy-kcal_100g']);
+  const salt = num(n['salt_100g']);
+  const sodiumG = num(n['sodium_100g']);
+
+  return {
+    energyKj,
+    // Si falta kcal pero hay kJ, se convierte (1 kcal = 4.184 kJ).
+    energyKcal: energyKcal ?? (energyKj !== undefined ? energyKj / 4.184 : undefined),
+    fat: num(n['fat_100g']),
+    saturatedFat: num(n['saturated-fat_100g']),
+    transFat: num(n['trans-fat_100g']),
+    carbohydrates: num(n['carbohydrates_100g']),
+    sugars: num(n['sugars_100g']),
+    fiber: num(n['fiber_100g']),
+    proteins: num(n['proteins_100g']),
+    // OFF expresa `sodium_100g` en gramos; nuestro dominio lo guarda en mg.
+    salt: salt ?? (sodiumG !== undefined ? sodiumG * 2.5 : undefined),
+    sodium: sodiumG !== undefined ? sodiumG * 1000 : salt !== undefined ? (salt / 2.5) * 1000 : undefined,
+    fruitsVegetablesLegumes:
+      num(n['fruits-vegetables-legumes-estimate-from-ingredients_100g']) ??
+      num(n['fruits-vegetables-nuts_100g']) ??
+      num(n['fruits-vegetables-nuts-estimate_100g']),
+  };
+}
+
+export function extractCategoryFlags(raw: OffRawProduct): CategoryFlags {
+  const nd = raw.nutriscore_data;
+  if (nd) {
+    return {
+      isBeverage: truthy(nd.is_beverage),
+      isWater: truthy(nd.is_water),
+      isCheese: truthy(nd.is_cheese),
+      isFatOilNutsSeeds: truthy(nd.is_fat_oil_nuts_seeds),
+      isRedMeat: truthy(nd.is_red_meat_product),
+    };
+  }
+  // Sin `nutriscore_data`, se infiere de las categorias. Es una aproximacion
+  // deliberadamente conservadora: la taxonomia real de OFF tiene miles de nodos.
+  const cats = raw.categories_tags ?? [];
+  const has = (...frags: string[]) => frags.some((f) => cats.some((c) => c.includes(f)));
+  return {
+    isBeverage: has('beverages', 'drinks', 'bebidas'),
+    isWater: has('waters', 'en:water'),
+    isCheese: has('cheese', 'quesos'),
+    isFatOilNutsSeeds: has('vegetable-oils', 'olive-oils', 'nuts', 'seeds', 'fats', 'butters'),
+    isRedMeat: has('beef', 'pork', 'lamb', 'veal', 'red-meat'),
+  };
+}
+
+function detectKind(raw: OffRawProduct, source: DataSource): ProductKind {
+  if (source === 'openbeautyfacts') return 'cosmetic';
+  const flags = extractCategoryFlags(raw);
+  return flags.isBeverage ? 'beverage' : 'food';
+}
+
+export function offProductToProduct(raw: OffRawProduct, source: DataSource): Product {
+  const kind = detectKind(raw, source);
+  const editBase = source === 'openbeautyfacts' ? OBF_BASE : OFF_BASE;
+  const grade = raw.nutriscore_data?.grade ?? raw.nutriscore_grade;
+
+  return {
+    barcode: raw.code,
+    name: raw.product_name_es || raw.product_name || raw.generic_name,
+    brands: raw.brands
+      ? raw.brands
+          .split(',')
+          .map((b) => b.trim())
+          .filter(Boolean)
+      : [],
+    kind,
+    quantity: raw.quantity,
+    imageUrl: raw.image_front_url,
+    imageThumbUrl: raw.image_front_small_url,
+    ingredientsText: raw.ingredients_text_es || raw.ingredients_text,
+    additiveTags: raw.additives_tags ?? [],
+    allergenTags: raw.allergens_tags ?? [],
+    labelTags: raw.labels_tags ?? [],
+    categoryTags: raw.categories_tags ?? [],
+    countryTags: raw.countries_tags ?? [],
+    nutriments: extractNutriments(raw),
+    novaGroup:
+      raw.nova_group !== undefined && raw.nova_group >= 1 && raw.nova_group <= 4
+        ? (raw.nova_group as 1 | 2 | 3 | 4)
+        : undefined,
+    // Ojo: `'abcde'.includes('')` devuelve true, y OFF envia tanto cadena vacia
+    // como "not-applicable" o "unknown". Se comprueba la longitud exacta.
+    offNutriscoreGrade:
+      grade && grade.length === 1 && 'abcde'.includes(grade)
+        ? (grade as NutriscoreGrade)
+        : undefined,
+    offNutriscoreScore: raw.nutriscore_data?.score,
+    categoryFlags: extractCategoryFlags(raw),
+    source,
+    lastModified: raw.last_modified_t ? raw.last_modified_t * 1000 : undefined,
+    fetchedAt: Date.now(),
+    editUrl: `${editBase}/cgi/product.pl?type=edit&code=${encodeURIComponent(raw.code)}`,
+  };
+}
+
+/**
+ * Construye la entrada del calculo Nutri-Score a partir de un producto crudo.
+ *
+ * Si OFF ya publico `nutriscore_data.components`, se usan ESOS valores. No es
+ * pereza: OFF estima el porcentaje de frutas/verduras/legumbres analizando la
+ * lista de ingredientes con su propia taxonomia, y esa estimacion no es
+ * reproducible desde fuera. Usando sus valores de entrada, el test comprueba lo
+ * que si nos corresponde: la asignacion de puntos y las reglas de combinacion.
+ */
+export function offProductToNutriscoreInput(raw: OffRawProduct): NutriscoreInput {
+  const flags = extractCategoryFlags(raw);
+  const nd = raw.nutriscore_data;
+  const comps = [...(nd?.components?.negative ?? []), ...(nd?.components?.positive ?? [])];
+
+  if (comps.length > 0) {
+    const byId = new Map(comps.map((c) => [c.id, c.value ?? undefined]));
+    const sweetenerComponent = nd?.components?.negative?.find(
+      (c) => c.id === 'non_nutritive_sweeteners',
+    );
+    return {
+      energy: byId.get('energy'),
+      energyFromSaturatedFat: byId.get('energy_from_saturated_fat'),
+      sugars: byId.get('sugars'),
+      saturatedFat: byId.get('saturated_fat'),
+      saturatedFatRatio: byId.get('saturated_fat_ratio'),
+      salt: byId.get('salt'),
+      fruitsVegetablesLegumes: byId.get('fruits_vegetables_legumes'),
+      fiber: byId.get('fiber'),
+      proteins: byId.get('proteins'),
+      nonNutritiveSweeteners: (sweetenerComponent?.points ?? 0) > 0,
+      flags,
+    };
+  }
+
+  // Sin datos previos, se calcula desde los nutrientes crudos.
+  const nut = extractNutriments(raw);
+  const satRatio =
+    nut.fat !== undefined && nut.fat > 0 && nut.saturatedFat !== undefined
+      ? (nut.saturatedFat / nut.fat) * 100
+      : undefined;
+  return {
+    energy: nut.energyKj,
+    energyFromSaturatedFat: nut.saturatedFat !== undefined ? nut.saturatedFat * 37 : undefined,
+    sugars: nut.sugars,
+    saturatedFat: nut.saturatedFat,
+    saturatedFatRatio: satRatio,
+    salt: nut.salt,
+    fruitsVegetablesLegumes: nut.fruitsVegetablesLegumes,
+    fiber: nut.fiber,
+    proteins: nut.proteins,
+    nonNutritiveSweeteners: hasNonNutritiveSweetener(raw.additives_tags ?? []),
+    flags,
+  };
+}
+
+/**
+ * Edulcorantes no nutritivos autorizados en la UE, por numero E.
+ * Fuente: taxonomia de aditivos de OFF, campo `non_nutritive_sweetener`.
+ */
+const NON_NUTRITIVE_SWEETENERS = new Set([
+  'en:e950', // acesulfamo K
+  'en:e951', // aspartamo
+  'en:e952', // ciclamato
+  'en:e954', // sacarina
+  'en:e955', // sucralosa
+  'en:e957', // taumatina
+  'en:e959', // neohesperidina DC
+  'en:e960', // glucosidos de esteviol
+  'en:e961', // neotamo
+  'en:e962', // sal de aspartamo-acesulfamo
+  'en:e969', // advantamo
+]);
+
+export function hasNonNutritiveSweetener(additiveTags: string[]): boolean {
+  return additiveTags.some((t) => NON_NUTRITIVE_SWEETENERS.has(t.toLowerCase()));
+}

@@ -1,0 +1,31 @@
+{
+  "name": "veskan",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "PWA para escanear productos y obtener un analisis nutricional y quimico con puntuacion abierta y auditable",
+  "license": "AGPL-3.0-only",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "db:build": "node scripts/build-db.mjs",
+    "db:serve": "node scripts/serve-db.mjs",
+    "build:taxonomies": "node scripts/build-taxonomies.mjs"
+  },
+  "dependencies": {
+    "dexie": "^4.4.6"
+  },
+  "devDependencies": {
+    "@sqlite.org/sqlite-wasm": "^3.53.4-build1",
+    "@types/node": "^22.20.3",
+    "better-sqlite3": "^12.4.1",
+    "typescript": "^5.9.3",
+    "vite": "^7.1.7",
+    "vite-plugin-pwa": "^1.0.3",
+    "vitest": "^3.2.4",
+    "zxing-wasm": "^3.1.4"
+  }
+}

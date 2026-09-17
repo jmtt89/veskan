@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" /><meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Diagnóstico del escáner</title>
+    <link rel="stylesheet" href="/src/styles.css" />
+  </head>
+  <body>
+    <main style="max-width:680px;margin:0 auto;padding:16px">
+      <h1 style="font-size:1.1rem">Diagnóstico del escáner</h1>
+      <p style="font-size:.88rem;color:var(--text-dim)">
+        Genera códigos EAN-13 sintéticos y los decodifica con el mismo motor que usa la cámara.
+        Aísla el decodificador de los problemas de óptica.
+      </p>
+      <div id="out"></div>
+      <canvas id="preview" style="max-width:100%;border:1px solid var(--border);border-radius:8px;margin-top:12px"></canvas>
+    </main>
+    <script type="module" src="/src/dev/scanner-check.ts"></script>
+  </body>
+</html>

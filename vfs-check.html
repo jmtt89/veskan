@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Diagnóstico del snapshot SQLite</title>
+    <link rel="stylesheet" href="/src/styles.css" />
+  </head>
+  <body>
+    <main style="max-width:680px;margin:0 auto;padding:16px">
+      <h1 style="font-size:1.1rem">Diagnóstico de la capa L1</h1>
+      <p style="font-size:.88rem;color:var(--text-dim)">
+        Comprueba que el VFS de SQLite sobre HTTP Range funciona de verdad contra el snapshot
+        estático: que se abre la base, que las consultas devuelven filas y, sobre todo, cuántos
+        bytes se transfieren frente al tamaño total del archivo.
+      </p>
+      <div id="out"></div>
+    </main>
+    <script type="module" src="/src/dev/vfs-check.ts"></script>
+  </body>
+</html>

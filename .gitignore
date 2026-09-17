@@ -1,0 +1,15 @@
+node_modules/
+dist/
+dev-dist/
+# Solo el 'data/' de la raiz (volcados y snapshot local).
+# Sin la barra inicial esta regla tambien excluiria public/data/, donde vive la
+# taxonomia de aditivos que la aplicacion necesita para puntuar.
+/data/
+*.local
+.DS_Store
+.env
+.env.*
+*.log
+
+# Repositorio separado (licencia ODbL). Se publica aparte.
+data-repo/

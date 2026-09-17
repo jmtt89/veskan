@@ -1,0 +1,67 @@
+# Despliegue de la aplicacion a GitHub Pages.
+#
+# No hace commit de nada: `actions/deploy-pages` sube un artefacto y lo publica,
+# de modo que el historial de git no crece con cada despliegue.
+name: Desplegar aplicacion
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Permisos minimos necesarios para publicar en Pages.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Un despliegue a la vez; no se cancela el que este en curso.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - run: npm ci
+
+      # Las pruebas bloquean el despliegue a proposito: incluyen la conformidad
+      # del Nutri-Score contra 228 productos reales. Si eso falla, el calculo
+      # esta mal y no debe llegar a nadie.
+      - name: Comprobar tipos y pruebas
+        run: |
+          npx tsc --noEmit
+          npm test
+
+      - name: Generar taxonomia de aditivos
+        run: npm run build:taxonomies
+
+      - name: Compilar
+        env:
+          # El snapshot vive en el repositorio de datos, publicado en el MISMO
+          # origen (usuario.github.io), asi que no hay CORS de por medio.
+          VITE_SNAPSHOT_URL: ${{ vars.SNAPSHOT_URL }}
+        run: npm run build
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
