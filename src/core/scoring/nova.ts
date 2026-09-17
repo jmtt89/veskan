@@ -58,11 +58,25 @@ const ULTRA_PROCESSING_MARKER_CLASSES = new Set([
  * posicion. Con `normalize('NFD')` la cadena cambia de largo y las posiciones
  * dejarian de corresponder.
  */
-const SIN_TILDE: Record<string, string> = {
-  á: 'a', é: 'e', í: 'i', ó: 'o', ú: 'u', ü: 'u', ñ: 'n',
-  Á: 'A', É: 'E', Í: 'I', Ó: 'O', Ú: 'U', Ü: 'U', Ñ: 'N',
-};
-const deacentuar = (t: string): string => t.replace(/[áéíóúüñÁÉÍÓÚÜÑ]/g, (c) => SIN_TILDE[c]!);
+/**
+ * Quita los diacriticos de cualquier alfabeto latino, no solo del castellano.
+ *
+ * Era un mapa a mano con las tildes espanolas, asi que el frances («arome»,
+ * «hydrogenee»), el portugues («acucar») y el aleman («gehartet») no se
+ * normalizaban y sus patrones no casaban nunca. Francia es el mayor catalogo
+ * del volcado, con 1.266.272 productos.
+ *
+ * Se descompone CARACTER A CARACTER y solo se sustituye cuando la base es un
+ * unico caracter. Eso conserva las posiciones, que no es un detalle: los
+ * marcadores se buscan sobre el texto normalizado y luego se recorta el
+ * ORIGINAL por ese indice, para citar al fabricante tal y como escribio.
+ */
+const deacentuar = (t: string): string =>
+  // eslint-disable-next-line no-control-regex
+  t.replace(/[^\u0000-\u007F]/g, (c) => {
+    const base = c.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    return base.length === 1 ? base : c;
+  });
 
 /**
  * Ingredientes cuyo nombre delata procesamiento industrial.
@@ -120,6 +134,69 @@ const ULTRA_PROCESSING_INGREDIENT_PATTERNS = [
   /invert sugar/i,
   /soy lecithin/i,
   /mono.{0,3}and diglycerides/i,
+
+  /*
+   * Frances, aleman, portugues e italiano.
+   *
+   * Francia es el catalogo mas grande del volcado: 1.266.272 productos, mas que
+   * Estados Unidos. Alemania tiene 426.111. Tenerlos fuera hacia que la
+   * inferencia NOVA no funcionase justo donde hay mas datos.
+   *
+   * Se escriben sin diacriticos, como los anteriores, porque se buscan sobre el
+   * texto ya normalizado.
+   */
+  // frances
+  /sirop de (glucose|fructose|mais)/i,
+  /(huile|graisse)s? (vegetales? )?(partiellement )?hydrogenees?/i,
+  /(isolat|hydrolysat)s? de proteines?/i,
+  /proteines? (de \w+ )?(texturees?|hydrolysees?)/i,
+  /aromes? (naturels?|artificiels?)/i,
+  /colorants? artificiels?/i,
+  /exhausteur(s)? de gout/i,
+  /extrait de levure/i,
+  /amidon(s)? (modifie|transforme)s?/i,
+  /lecithine de soja/i,
+  /mono.{0,5}et diglycerides/i,
+  /sucre inverti/i,
+  // aleman
+  /(glukose|fruktose|glucose|mais)[\w-]*sirup/i,
+  /(teilweise )?gehartete[sr]? (pflanzen)?(fett|ol)/i,
+  /(soja|molken|milch|erbsen)?[\w-]*(protein|eiweiss)isolat/i,
+  /maltodextrin\b/i,
+  /(naturliches?|kunstliches?) aroma/i,
+  /(kunstliche[rs]? )?farbstoffe?/i,
+  /geschmacksverstarker/i,
+  /hefeextrakt/i,
+  /(ca|ka)seinat/i,
+  /modifizierte starke/i,
+  /sojalecithin/i,
+  /mono.{0,5}und diglyceride/i,
+  /invertzucker/i,
+  // portugues
+  /xarope de (glicose|frutose|milho)/i,
+  /(oleo|gordura)s? (vegetal(is)? )?(parcialmente )?hidrogenad[oa]s?/i,
+  /proteina(s)? [\w\s]{0,18}(isolada|hidrolisada|texturizada)/i,
+  /(aroma|aromatizante)(s)? (natural|artificial)(is)?/i,
+  /corante(s)? artificia(l|is)/i,
+  /realcador de sabor/i,
+  /extrato de levedura/i,
+  /amido modificado/i,
+  /lecitina de soja/i,
+  /mono e diglicerideos/i,
+  /acucar invertido/i,
+  // italiano
+  /sciroppo di (glucosio|fruttosio|mais)/i,
+  /(olio|grasso) (vegetale )?(parzialmente )?idrogenato/i,
+  /proteine (isolate|idrolizzate)/i,
+  /maltodestrin[ae]/i,
+  /arom[ai] (naturale|artificiale)/i,
+  /coloranti artificiali/i,
+  /esaltatore di sapidita/i,
+  /estratto di lievito/i,
+  /amido modificato/i,
+  /lecitina di soia/i,
+  /mono e digliceridi/i,
+  /zucchero invertito/i,
 ];
 
 export interface NovaInference {
@@ -148,11 +225,20 @@ function findMarkers(product: Product, additiveClasses: Map<string, string[]>): 
 
   const original = product.ingredientsText ?? '';
   const normalizado = deacentuar(original);
+  // Varios idiomas comparten palabra -«caseinato» vale en castellano, portugues
+  // e italiano-, asi que sin esto el mismo trozo de etiqueta se listaria dos o
+  // tres veces como si fueran hallazgos distintos.
+  const yaVistos = new Set<string>();
   for (const pattern of ULTRA_PROCESSING_INGREDIENT_PATTERNS) {
     const match = pattern.exec(normalizado);
+    if (!match) continue;
     // Se cita el texto tal y como lo escribio el fabricante, no el normalizado:
     // ver «PROTEINA» cuando la etiqueta dice «PROTEÍNA» parece un error nuestro.
-    if (match) markers.push({ kind: 'ingredient', value: original.slice(match.index, match.index + match[0].length) });
+    const value = original.slice(match.index, match.index + match[0].length);
+    const clave = value.toLowerCase();
+    if (yaVistos.has(clave)) continue;
+    yaVistos.add(clave);
+    markers.push({ kind: 'ingredient', value });
   }
 
   return markers;
