@@ -121,6 +121,17 @@ describe('mensajes al usuario', () => {
     expect(opfsUnsupportedMessage('no-api').title).not.toContain('otra pestaña');
   });
 
+  it('distingue un fallo pasajero de una incapacidad del navegador', () => {
+    // Culpar al navegador de una carrera con la carga anterior seria mentira, y
+    // ademas deja al usuario sin la unica accion que lo resuelve: recargar.
+    for (const reason of ['handles-busy', 'unknown']) {
+      const msg = opfsUnsupportedMessage(reason);
+      expect(msg.body).toContain('Vuelve a cargar la página');
+      expect(msg.title).not.toBe(opfsUnsupportedMessage('no-api').title);
+    }
+    expect(opfsUnsupportedMessage('no-api').body).not.toContain('Vuelve a cargar');
+  });
+
   it('ningun mensaje deja al usuario sin saber que hacer', () => {
     for (const reason of ['no-api', 'too-old', 'locked-by-other-tab', 'unknown']) {
       const m = opfsUnsupportedMessage(reason);

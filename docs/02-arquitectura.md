@@ -1,6 +1,6 @@
 # Arquitectura y decisiones técnicas
 
-**Fecha:** 2026-09-16
+**Fecha:** 2026-09-17
 Documento de decisiones. Cada decisión lleva su justificación y, cuando aplica, la medición que la respalda.
 
 ---
@@ -75,15 +75,46 @@ app-market/
 
 ## D3. Las cuatro capas de datos
 
-| Capa | Qué es | Latencia | Cobertura |
-|---|---|---|---|
-| **L0** | IndexedDB (Dexie): productos ya vistos, historial, cola de contribuciones | ~1 ms | lo ya escaneado |
-| **L1** | SQLite estático sobre HTTP Range, en repo git público + CDN | ~50–300 ms | snapshot ES+LatAm + productos propios |
-| **L2** | API de Open Food Facts / Open Beauty Facts en vivo | ~300–900 ms | 4.75 M productos, global |
-| **L3** | Contribución del usuario (foto + formulario) | — | lo que no existe en ningún lado |
+| Capa | Qué es | Latencia | Red | Cobertura |
+|---|---|---|---|---|
+| **L0** | IndexedDB (Dexie): productos ya vistos, historial, cola de contribuciones | ~1 ms | no | lo ya escaneado |
+| **L1** | **Catálogos descargados**: archivos SQLite reales en OPFS, uno por país | ~5–50 ms | **no** | los países que el usuario haya guardado |
+| **L2** | Catálogos publicados **no** descargados, leídos por HTTP Range | ~50–300 ms | sí, sin límite | el resto de países publicados |
+| **L3** | API de Open Food Facts / Open Beauty Facts en vivo | ~300–900 ms | sí, 15 pet./min | 4.75 M productos, global |
+| **L4** | Contribución del usuario (foto + formulario) | — | sí | lo que no existe en ningún lado |
 
-**Orden de consulta:** L0 → L1 → L2 → L3.
-**Orden de frescura:** L2 es la fuente de verdad; L1 es un snapshot; L0 caduca a los 30 días.
+**Orden de consulta:** L0 → L1 → L2 → L3 → L4.
+**Orden de frescura:** L3 es la fuente de verdad; L1 y L2 son instantáneas; L0 caduca a los 30 días.
+
+**L1 admite varios países a la vez**, y no por comodidad: medido sobre los shards
+publicados, el **19,3 % del catálogo mexicano** y el **13,8 % del venezolano** llevan
+prefijo GS1 estadounidense. Un usuario mexicano necesita México *y* Estados Unidos, así
+que la lista de la interfaz deja descargar y borrar cada país por separado.
+
+**L2 no es una opción que el usuario deba entender, es automática.** Existe para no gastar
+el cupo de un servicio donado: si el producto está en un catálogo que ya publicamos, se
+resuelve por rangos sin tocar la API.
+
+Dentro de L1/L2 el orden por país lo decide `snapshotPriority()`: primero los descargados,
+en su orden, y después el que sugiere el prefijo GS1 del código. Lo que el usuario tiene
+en disco manda sobre la deducción.
+
+### Un único Worker, por obligación
+La documentación del VFS `opfs-sahpool` es explícita: *"only one instance of this VFS can
+use the same directory concurrently"*. Todo el acceso a OPFS pasa por un solo Worker
+(`worker-pool.ts`), del que cuelgan las fuentes lógicas identificadas por país.
+
+Además hay dos trampas verificadas en el código de la librería:
+
+- `installOpfsSAHPoolVfs()`, al fallar, llama a `removeVfs()`, que **borraría el directorio
+  entero**. Se serializa con `navigator.locks`, tomando el candado durante toda la vida del
+  contexto y no solo durante la instalación.
+- `acquireAccessHandles()` pide todos los manejadores con un `Promise.all`; si uno falla,
+  los que resuelven después quedan **huérfanos dentro de ese Worker** y ningún reintento
+  puede ya tomarlos. Por eso el reintento no está dentro del Worker: se **termina el
+  Worker** y se empieza con uno nuevo.
+- `pauseVfs()` lanza si queda alguna base abierta, así que al ocultarse la página se
+  cierran antes las conexiones y se reabren solas en la siguiente consulta.
 
 Cuando L2 responde y difiere de L1, se actualiza L0 con lo de L2 y se marca el registro de L1 como desactualizado (telemetría para regenerar el snapshot).
 

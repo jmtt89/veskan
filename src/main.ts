@@ -11,15 +11,8 @@ import { html, mount, raw, type SafeHtml } from './ui/render.js';
 import { assessmentView } from './ui/components.js';
 import { OffClient, OffRateLimitError } from './core/data/off.js';
 import { hasUsableData, ProductNotFoundError, ProductRepository } from './core/data/repository.js';
-import { SqliteHttpSource } from './core/data/sqlite-http/client.js';
-import {
-  availableCountries,
-  COUNTRY_LABELS,
-  guessCountry,
-  loadSnapshotIndex,
-  strategyFor,
-  type SnapshotIndex,
-} from './core/data/sqlite-http/snapshot-index.js';
+import { guessCountry, loadSnapshotIndex } from './core/data/sqlite-http/snapshot-index.js';
+import { CatalogManager, type CatalogView } from './core/data/catalog-manager.js';
 import { loadScoringContext } from './core/data/taxonomies.js';
 import {
   CameraScanner,
@@ -68,7 +61,6 @@ const SNAPSHOT_BASE_URL: string =
   import.meta.env.VITE_SNAPSHOT_URL ||
   'https://raw.githubusercontent.com/jmtt89/veskan-data/data';
 
-const COUNTRY_STORAGE_KEY = 'veskan.country';
 
 type View = 'scan' | 'result' | 'history' | 'search' | 'contribute' | 'about';
 
@@ -86,13 +78,10 @@ interface AppState {
   torchOn: boolean;
   /** El producto existe en la base pero sin datos suficientes para evaluarlo */
   sparseProduct: boolean;
-  snapshotIndex?: SnapshotIndex;
-  country?: string;
-  snapshotStatus: 'none' | 'loading' | 'ready' | 'error';
+  /** Catalogos publicados, con su estado en este dispositivo */
+  catalogs: CatalogView[];
   /** El codigo no puede resolverse en ninguna base global (interno, libro, cupon) */
   unresolvableBarcode?: boolean;
-  snapshotDetail?: string;
-  downloadProgress?: { loaded: number; total: number };
 }
 
 const state: AppState = {
@@ -102,9 +91,9 @@ const state: AppState = {
   searchResults: [],
   scannerActive: false,
   snapshotAvailable: false,
+  catalogs: [],
   torchOn: false,
   sparseProduct: false,
-  snapshotStatus: 'none',
 };
 
 const off = new OffClient({
@@ -119,73 +108,13 @@ const repo = new ProductRepository({
 });
 
 /**
- * Prepara el snapshot del pais indicado.
+ * Gestor de catalogos. Se crea al leer el indice publicado.
  *
- * La estrategia la decide el TAMANO publicado en el indice, no una lista
- * cableada: los paises pequenos se descargan enteros (y despues funcionan sin
- * conexion), los grandes se consultan por rangos.
+ * Sustituye al modelo anterior de "un pais elegido en un desplegable": ahora
+ * pueden convivir varios descargados, y los que no lo esten se consultan por
+ * rangos antes de recurrir a la API.
  */
-async function useCountry(country: string): Promise<void> {
-  const index = state.snapshotIndex;
-  const entry = index?.countries[country];
-  if (!index || !entry) {
-    state.snapshotStatus = 'none';
-    render();
-    return;
-  }
-
-  state.country = country;
-  try {
-    localStorage.setItem(COUNTRY_STORAGE_KEY, country);
-  } catch {
-    /* almacenamiento bloqueado: se pierde la preferencia, nada mas */
-  }
-
-  const strategy = strategyFor(entry);
-  state.snapshotStatus = 'loading';
-  state.downloadProgress = undefined;
-  render();
-
-  await repo.snapshot?.close().catch(() => {});
-
-  const source = new SqliteHttpSource({
-    source: country,
-    url: `${SNAPSHOT_BASE_URL}/${entry.file}`,
-    strategy,
-    generatedAt: index.generated_at,
-    onProgress: (p) => {
-      state.downloadProgress = p;
-      updateSnapshotStatusInPlace();
-    },
-  });
-  repo.setSnapshot(source);
-
-  try {
-    await source.init();
-    state.snapshotStatus = 'ready';
-    state.snapshotDetail =
-      strategy === 'download'
-        ? `${entry.products.toLocaleString('es')} productos disponibles sin conexión`
-        : `${entry.products.toLocaleString('es')} productos, consultados bajo demanda`;
-  } catch (err) {
-    state.snapshotStatus = 'error';
-    state.snapshotDetail = err instanceof Error ? err.message : String(err);
-    repo.setSnapshot(undefined);
-  }
-  state.downloadProgress = undefined;
-  render();
-}
-
-/** Refresca solo la barra de progreso: un render completo por cada trozo seria un derroche. */
-function updateSnapshotStatusInPlace(): void {
-  const bar = document.getElementById('snapshot-progress') as HTMLElement | null;
-  if (!bar || !state.downloadProgress) return;
-  const { loaded, total } = state.downloadProgress;
-  const pct = total ? Math.round((loaded / total) * 100) : 0;
-  bar.style.width = `${pct}%`;
-  const label = document.getElementById('snapshot-progress-label');
-  if (label) label.textContent = `${pct}% · ${(loaded / 1024 / 1024).toFixed(1)} MB`;
-}
+let catalogs: CatalogManager | undefined;
 
 const root = document.getElementById('app')!;
 let scanner: CameraScanner | undefined;
@@ -202,6 +131,42 @@ const videoEl = document.createElement('video');
 videoEl.muted = true;
 videoEl.setAttribute('playsinline', 'true');
 videoEl.setAttribute('autoplay', 'true');
+
+/**
+ * Refresca SOLO la fila del pais que cambio.
+ *
+ * Un `render()` completo reconstruye el DOM con innerHTML y **pierde el foco**,
+ * lo que durante una descarga dejaria al teclado y al lector de pantalla sin
+ * referencia cada vez que avanza la barra.
+ */
+function updateCatalogRow(country: string): void {
+  if (!catalogs) return;
+  const view = catalogs.get(country);
+  if (!view) return;
+  state.catalogs = catalogs.list();
+
+  const fila = document.getElementById(`catalog-${country}`);
+  if (!fila) {
+    if (state.view === 'about') render();
+    return;
+  }
+  const nueva = document.createElement('div');
+  nueva.innerHTML = catalogRow(view).value;
+  const reemplazo = nueva.firstElementChild;
+  if (!reemplazo) return;
+
+  // Si el foco estaba dentro de la fila, se devuelve al boton que la fila tenga
+  // AHORA, que no es el mismo: "Descargar" pasa a "Descargando..." y luego a
+  // "Eliminar". Buscar la accion anterior dejaria el foco en el body justo al
+  // empezar y al terminar la descarga.
+  const teniaFoco = fila.contains(document.activeElement);
+  fila.replaceWith(reemplazo);
+  if (teniaFoco) reemplazo.querySelector<HTMLElement>('.catalog-actions button')?.focus();
+
+  // El recuento vive fuera de la fila, asi que no se arregla solo.
+  const resumen = document.getElementById('catalog-summary');
+  if (resumen) resumen.textContent = catalogSummary();
+}
 
 // ---------------------------------------------------------------------------
 // Vistas
@@ -430,11 +395,11 @@ function searchView(): SafeHtml {
   return html`
     ${header('Buscar por nombre')}
     <main>
-      ${state.snapshotStatus !== 'ready'
+      ${state.catalogs.every((c) => c.state !== 'ready')
         ? html`<div class="notice warn">
-            La búsqueda por nombre necesita la copia local de tu país.
+            La búsqueda por nombre necesita un catálogo guardado en el dispositivo.
             ${state.snapshotAvailable
-              ? html`Elígela en <strong>Método</strong> → Copia local por país.`
+              ? html`Descarga el de tu país en <strong>Información</strong> → Catálogos sin conexión.`
               : 'No está disponible en esta instalación.'}
             Mientras tanto puedes escanear el código de barras o introducirlo a mano.
           </div>`
@@ -607,86 +572,134 @@ function contributeFormView(): SafeHtml {
   `;
 }
 
+const mb = (bytes: number) =>
+  `${(bytes / 1024 / 1024).toFixed(bytes < 10 * 1024 * 1024 ? 1 : 0)} MB`;
+
 /**
- * Tarjeta de la copia local por pais.
+ * Una fila de la lista de catalogos.
  *
- * Se muestra el tamano y lo que implica cada estrategia, porque descargar
- * megas sin avisar en una conexion movil no es aceptable.
+ * Cada boton lleva el pais en su nombre accesible: sin eso, un lector de
+ * pantalla anuncia una lista de botones "Descargar" indistinguibles entre si.
  */
-function snapshotCard(): SafeHtml {
-  const index = state.snapshotIndex;
-  if (!index) {
+function catalogRow(v: CatalogView): SafeHtml {
+  const idProgreso = `progress-${v.country}`;
+  return html`
+    <div class="catalog-row" id="catalog-${v.country}">
+      <div class="catalog-info">
+        <strong id="catalog-name-${v.country}">${v.label}</strong>
+        <small>
+          ${v.products.toLocaleString('es')} productos · ${mb(v.bytes)}
+          ${v.state === 'ready' ? html` · <span class="ok">guardado, funciona sin conexión</span>` : ''}
+        </small>
+      </div>
+
+      <div class="catalog-actions">
+        ${v.state === 'downloading'
+          ? html`<button
+              class="secondary compact"
+              data-action="catalog-download"
+              data-country="${v.country}"
+              aria-disabled="true"
+              aria-label="Descargando el catálogo de ${v.label}"
+            >
+              Descargando…
+            </button>`
+          : v.state === 'ready'
+            ? html`<button
+                class="secondary compact"
+                data-action="catalog-remove"
+                data-country="${v.country}"
+                aria-label="Eliminar el catálogo de ${v.label}"
+              >
+                Eliminar
+              </button>`
+            : html`<button
+                class="primary compact"
+                data-action="catalog-download"
+                data-country="${v.country}"
+                aria-label="Descargar el catálogo de ${v.label}, ${mb(v.bytes)}"
+              >
+                ${v.state === 'error' ? 'Reintentar' : 'Descargar'}
+              </button>`}
+      </div>
+
+      ${v.state === 'downloading' && v.progress
+        ? html`
+            <div class="catalog-progress">
+              <div
+                class="bar"
+                role="progressbar"
+                id="${idProgreso}"
+                aria-labelledby="catalog-name-${v.country}"
+                aria-valuemin="0"
+                aria-valuemax="100"
+                aria-valuenow="${Math.round((v.progress.loaded / (v.progress.total || 1)) * 100)}"
+              >
+                <span style="width:${Math.round((v.progress.loaded / (v.progress.total || 1)) * 100)}%"></span>
+              </div>
+              <small>${mb(v.progress.loaded)} de ${mb(v.progress.total)}</small>
+            </div>
+          `
+        : ''}
+
+      ${v.problem
+        ? html`<div class="catalog-problem">
+            <strong>${v.problem.title}</strong>
+            <span>${v.problem.body}</span>
+          </div>`
+        : ''}
+    </div>
+  `;
+}
+
+function catalogSummary(): string {
+  const guardados = state.catalogs.filter((c) => c.state === 'ready');
+  if (guardados.length === 0) return 'Todavía no has guardado ningún catálogo.';
+  const bytes = mb(guardados.reduce((t, c) => t + c.bytes, 0));
+  return guardados.length === 1
+    ? `1 catálogo guardado en este dispositivo, ${bytes}.`
+    : `${guardados.length} catálogos guardados en este dispositivo, ${bytes} en total.`;
+}
+
+/**
+ * Tarjeta de catalogos por pais.
+ *
+ * Se pueden tener varios a la vez: en Latinoamerica los importados
+ * estadounidenses son frecuentes, asi que un usuario mexicano quiere Mexico y
+ * Estados Unidos.
+ */
+function catalogsCard(): SafeHtml {
+  if (state.catalogs.length === 0) {
     return html`
       <div class="card">
-        <h2>Copia local</h2>
+        <h2>Catálogos sin conexión</h2>
         <p style="margin:0;font-size:.88rem;color:var(--text-dim)">
-          No disponible en esta instalación. La aplicación funciona igualmente
-          consultando Open Food Facts en vivo.
+          No disponibles en esta instalación. La aplicación funciona igualmente consultando
+          Open Food Facts en vivo.
         </p>
       </div>
     `;
   }
 
-  const countries = availableCountries(index);
-  const current = state.country;
-  const entry = current ? index.countries[current] : undefined;
+  const aviso = state.catalogs.find((c) => c.warning)?.warning;
 
   return html`
     <div class="card">
-      <h2>Copia local por país</h2>
-      <p style="margin:0 0 10px;font-size:.88rem;color:var(--text-dim)">
-        Guardar la base de tu país acelera las consultas y, si es pequeña, hace
-        que la aplicación funcione <strong>sin conexión</strong>.
+      <h2>Catálogos sin conexión</h2>
+      <p style="margin:0 0 4px;font-size:.88rem;color:var(--text-dim)">
+        Guarda el catálogo de los países que te interesen y la aplicación funcionará sin
+        cobertura. Puedes tener varios: los productos importados suelen llevar el código de
+        barras de su país de origen.
+      </p>
+      <p style="margin:0 0 12px;font-size:.82rem;color:var(--text-dim)">
+        Lo que no guardes se consulta igualmente por internet, sin gastar el límite de
+        peticiones de Open Food Facts.
       </p>
 
-      <label for="country-select">País</label>
-      <select id="country-select">
-        <option value="">Ninguno (solo consulta en vivo)</option>
-        ${countries.map(
-          (c) => html`<option value="${c.code}" ${raw(c.code === current ? 'selected' : '')}>
-            ${COUNTRY_LABELS[c.code] ?? c.code} · ${c.products.toLocaleString('es')} productos ·
-            ${(c.bytes / 1024 / 1024).toFixed(1)} MB
-          </option>`,
-        )}
-      </select>
+      <div class="catalog-list">${state.catalogs.map(catalogRow)}</div>
 
-      ${state.snapshotStatus === 'loading'
-        ? html`
-            <div style="margin-top:12px">
-              <div class="confidence" style="margin:0">
-                <strong>Descargando…</strong>
-                <div class="bar"><span id="snapshot-progress" style="width:0%"></span></div>
-                <div id="snapshot-progress-label">preparando</div>
-              </div>
-            </div>
-          `
-        : raw('')}
-
-      ${state.snapshotStatus === 'ready' && entry
-        ? html`<p style="margin:12px 0 0;font-size:.86rem">
-            ✓ ${state.snapshotDetail}
-            ${strategyFor(entry) === 'download'
-              ? html`<br /><span style="color:var(--text-dim)"
-                  >Guardada en este dispositivo: funciona sin cobertura.</span
-                >`
-              : html`<br /><span style="color:var(--text-dim)"
-                  >Demasiado grande para guardarla entera
-                  (${(entry.bytes / 1024 / 1024).toFixed(0)} MB): se consultan solo las páginas
-                  necesarias, así que requiere conexión.</span
-                >`}
-          </p>`
-        : raw('')}
-
-      ${state.snapshotStatus === 'error'
-        ? html`<p style="margin:12px 0 0;font-size:.86rem;color:var(--danger)">
-            No se pudo preparar: ${state.snapshotDetail}
-          </p>`
-        : raw('')}
-
-      <p class="source-note">
-        Datos generados el ${new Date(index.generated_at).toLocaleDateString('es')} a partir de
-        Open Food Facts, bajo licencia ODbL.
-      </p>
+      ${aviso ? html`<p class="source-note">${aviso}</p>` : ''}
+      <p class="source-note" id="catalog-summary">${catalogSummary()}</p>
     </div>
   `;
 }
@@ -749,7 +762,7 @@ function aboutView(): SafeHtml {
         </p>
       </div>
 
-      ${snapshotCard()}
+      ${catalogsCard()}
 
       <div class="card">
         <h2>Privacidad</h2>
@@ -856,6 +869,17 @@ async function lookup(barcode: string): Promise<void> {
     } else if (err instanceof OffRateLimitError) {
       const seconds = Math.ceil(err.retryAfterMs / 1000);
       state.error = `Open Food Facts limita las consultas a 15 por minuto. Inténtalo de nuevo en ${seconds} segundos.`;
+    } else if (!navigator.onLine) {
+      // Sin red, la unica via era un catalogo guardado. Soltar el "Failed to
+      // fetch" del navegador no le dice al usuario ni que ha pasado ni que
+      // puede hacer.
+      const guardados = catalogs?.downloadedCountries.length ?? 0;
+      state.error =
+        guardados > 0
+          ? 'No hay conexión y este producto no está en los catálogos que tienes guardados. ' +
+            'Vuelve a intentarlo cuando tengas red, o guarda el catálogo de su país.'
+          : 'No hay conexión y no tienes ningún catálogo guardado. Descarga el de tu país en ' +
+            'Información → Catálogos sin conexión y podrás consultar sin red.';
     } else {
       state.error = err instanceof Error ? err.message : 'Error desconocido';
     }
@@ -925,6 +949,9 @@ function str(id: string): string | undefined {
 root.addEventListener('click', (event) => {
   const el = (event.target as HTMLElement | null)?.closest<HTMLElement>('[data-action]');
   if (!el) return;
+  // `aria-disabled` mantiene el boton en el orden de tabulacion, a diferencia
+  // de `disabled`, pero no impide la pulsacion: hay que ignorarla aqui.
+  if (el.getAttribute('aria-disabled') === 'true') return;
   const action = el.dataset.action;
 
   switch (action) {
@@ -957,6 +984,16 @@ root.addEventListener('click', (event) => {
     case 'open':
       if (el.dataset.barcode) void lookup(el.dataset.barcode);
       break;
+    case 'catalog-download': {
+      const country = el.dataset['country'];
+      if (country) void catalogs?.download(country);
+      break;
+    }
+    case 'catalog-remove': {
+      const country = el.dataset['country'];
+      if (country) void catalogs?.remove(country);
+      break;
+    }
     case 'clear-history':
       void clearHistory().then(() => navigate('history'));
       break;
@@ -1011,28 +1048,6 @@ root.addEventListener('click', (event) => {
         URL.revokeObjectURL(url);
       });
       break;
-  }
-});
-
-root.addEventListener('change', (event) => {
-  const select = event.target as HTMLSelectElement;
-  if (select.id === 'country-select') {
-    const value = select.value;
-    if (!value) {
-      void repo.snapshot?.close().catch(() => {});
-      repo.setSnapshot(undefined);
-      state.country = undefined;
-      state.snapshotStatus = 'none';
-      try {
-        localStorage.removeItem(COUNTRY_STORAGE_KEY);
-      } catch {
-        /* almacenamiento bloqueado */
-      }
-      render();
-    } else {
-      void useCountry(value);
-    }
-    return;
   }
 });
 
@@ -1101,22 +1116,22 @@ async function boot(): Promise<void> {
   // contra la API en vivo mientras tanto.
   void loadSnapshotIndex(SNAPSHOT_BASE_URL).then(async (index) => {
     if (!index) return;
-    state.snapshotIndex = index;
     state.snapshotAvailable = true;
 
-    let chosen: string | undefined;
-    try {
-      chosen = localStorage.getItem(COUNTRY_STORAGE_KEY) ?? undefined;
-    } catch {
-      /* almacenamiento bloqueado */
-    }
-    const codes = Object.keys(index.countries);
-    if (!chosen || !codes.includes(chosen)) chosen = guessCountry(codes);
+    catalogs = new CatalogManager({ baseUrl: SNAPSHOT_BASE_URL, onChange: updateCatalogRow });
+    await catalogs.init(index);
+    repo.setCatalogs(catalogs);
+    state.catalogs = catalogs.list();
 
-    // Sin pais deducible no se descarga nada: bajar megas que el usuario no ha
-    // pedido, y que quiza no le sirvan, seria abusivo.
-    if (chosen) await useCountry(chosen);
-    else render();
+    // Nada se descarga sin que el usuario lo pida: bajar megas que no ha
+    // pedido, y que quiza no le sirvan, seria abusivo. El prefijo GS1 y el
+    // idioma solo sirven para poner su pais el primero de la lista.
+    if (catalogs.downloadedCountries.length === 0) {
+      const sugerido = guessCountry(Object.keys(index.countries));
+      if (sugerido) catalogs.suggest(sugerido);
+      state.catalogs = catalogs.list();
+    }
+    render();
   });
 
   if (code) void lookup(code);

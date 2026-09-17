@@ -50,15 +50,36 @@ describe('clasificacion por prefijo GS1', () => {
     expect(isUnresolvable('0009800800124')).toBe(false);
   });
 
-  it('prioriza el pais del usuario por delante del prefijo', () => {
-    // El del usuario va primero porque es el que tiene descargado y funciona
-    // sin conexion, aunque el prefijo sugiera otro.
-    expect(snapshotPriority('0009800800124', 'venezuela')).toEqual([
+  it('pone primero el catalogo descargado que sugiere el prefijo', () => {
+    // Con México y Estados Unidos descargados, un código estadounidense debe
+    // consultar primero Estados Unidos: es donde más probable es que esté, y
+    // además funciona sin conexión.
+    expect(snapshotPriority('0009800800124', ['mexico', 'united-states'])).toEqual([
+      'united-states',
+      'mexico',
+    ]);
+  });
+
+  it('si el sugerido no esta descargado, lo deja para el final', () => {
+    // Se consultan primero los que funcionan sin conexión; el sugerido queda
+    // al final para intentarlo por rangos antes de gastar cupo de la API.
+    expect(snapshotPriority('0009800800124', ['venezuela'])).toEqual([
       'venezuela',
       'united-states',
     ]);
-    expect(snapshotPriority('7590005008581', 'venezuela')).toEqual(['venezuela']);
+  });
+
+  it('sin nada descargado, solo queda la pista del prefijo', () => {
     expect(snapshotPriority('8410000000007')).toEqual(['spain']);
+    expect(snapshotPriority('7590005008581', [])).toEqual(['venezuela']);
+  });
+
+  it('no repite el pais cuando coincide con el sugerido', () => {
+    expect(snapshotPriority('7590005008581', ['venezuela'])).toEqual(['venezuela']);
+  });
+
+  it('un codigo sin pais reconocible deja el orden de los descargados', () => {
+    expect(snapshotPriority('96385074', ['mexico', 'chile'])).toEqual(['mexico', 'chile']);
   });
 
   it('no se rompe con entradas raras', () => {

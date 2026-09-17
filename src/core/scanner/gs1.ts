@@ -150,18 +150,27 @@ export function classifyBarcode(barcode: string): BarcodeInfo {
 }
 
 /**
- * Orden en el que conviene consultar los snapshots para un codigo dado.
+ * Orden en el que conviene consultar los catalogos para un codigo dado.
  *
- * El pais del usuario va primero porque es el que probablemente tiene
- * descargado y funciona sin conexion. Despues el que sugiere el prefijo. El
- * resto queda para la consulta en vivo.
+ * Primero el que sugiere el prefijo GS1, SI el usuario lo tiene descargado:
+ * es el que con mas probabilidad contiene el producto y ademas funciona sin
+ * conexion. Despues el resto de los descargados. Y al final, el que sugiere el
+ * prefijo aunque no este descargado, para poder consultarlo por rangos antes de
+ * gastar cupo de la API.
+ *
+ * El prefijo acierta el pais entre el 52% y el 79% de las veces (medido sobre
+ * nuestros propios catalogos), asi que es una pista buena pero no una verdad:
+ * por eso nunca se descarta el resto, solo se reordena.
  */
-export function snapshotPriority(barcode: string, userCountry?: string): string[] {
-  const info = classifyBarcode(barcode);
-  const order: string[] = [];
-  if (userCountry) order.push(userCountry);
-  if (info.country && !order.includes(info.country)) order.push(info.country);
-  return order;
+export function snapshotPriority(barcode: string, downloaded: string[] = []): string[] {
+  const sugerido = classifyBarcode(barcode).country;
+  const orden: string[] = [];
+
+  if (sugerido && downloaded.includes(sugerido)) orden.push(sugerido);
+  for (const c of downloaded) if (!orden.includes(c)) orden.push(c);
+  if (sugerido && !orden.includes(sugerido)) orden.push(sugerido);
+
+  return orden;
 }
 
 /** true si el codigo no puede resolverse en ninguna base global. */

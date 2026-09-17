@@ -28,6 +28,8 @@ export type OpfsFailureReason =
   | 'too-old'
   /** Otra pestana tiene tomado el almacenamiento */
   | 'locked-by-other-tab'
+  /** Los manejadores de OPFS siguen tomados por un contexto que aun no ha muerto */
+  | 'handles-busy'
   | 'unknown';
 
 export class OpfsUnavailableError extends Error {
@@ -102,6 +104,56 @@ export function slotsFor(databases: number): number {
   return databases * 2 + 4;
 }
 
+/**
+ * Tiempo que se espera al candado antes de dar por hecho que otra pestana lo
+ * tiene de verdad. Al recargar, el Worker de la pagina anterior puede tardar
+ * unos segundos en morir; rendirse antes daria un mensaje falso de "abierto en
+ * otra pestana" ante una simple recarga.
+ */
+const LOCK_WAIT_MS = 10_000;
+
+/** Libera el candado del pool. Existe mientras este contexto lo tenga tomado. */
+let liberarLock: (() => void) | undefined;
+
+/**
+ * Toma el candado y LO MANTIENE mientras este contexto use el pool.
+ *
+ * Antes se pedia con `ifAvailable`, que solo cubria la inicializacion: dos
+ * contextos podian tener el pool a la vez con tal de no arrancar al mismo
+ * tiempo, y el segundo chocaba con los manejadores del primero. Reteniendolo
+ * hasta que el contexto muere -- el navegador lo suelta solo -- la exclusion
+ * dura lo que dura el uso, que es lo que exige el VFS: "only one instance of
+ * this VFS can use the same directory concurrently".
+ */
+async function tomarLock(): Promise<void> {
+  if (!navigator.locks?.request) return; // sin la API no hay proteccion posible
+  if (liberarLock) return;
+
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), LOCK_WAIT_MS);
+
+  await new Promise<void>((resolve, reject) => {
+    navigator.locks
+      .request(POOL_LOCK, { signal: ctrl.signal }, () => {
+        clearTimeout(timer);
+        resolve();
+        // Devolver una promesa pendiente es lo que mantiene el candado tomado.
+        return new Promise<void>((rel) => {
+          liberarLock = rel;
+        });
+      })
+      .catch((err: unknown) => {
+        clearTimeout(timer);
+        reject(err as Error);
+      });
+  });
+}
+
+function soltarLock(): void {
+  liberarLock?.();
+  liberarLock = undefined;
+}
+
 let pool: SAHPoolUtil | undefined;
 let poolPromise: Promise<SAHPoolUtil> | undefined;
 
@@ -121,7 +173,19 @@ let poolPromise: Promise<SAHPoolUtil> | undefined;
  * si otra pestana ya lo tiene, se rechaza SIN llegar a inicializar.
  */
 export async function ensurePool(sqlite3: unknown, databases = 4): Promise<SAHPoolUtil> {
-  if (pool) return pool;
+  // Si la pagina volvio de la cache de retroceso, el pool sigue aqui pero en
+  // pausa: sin manejadores y sin registrar en SQLite. Hay que reanudarlo antes
+  // de devolverlo o toda consulta fallaria con "no such vfs".
+  if (pool) {
+    const p = pool as SAHPoolUtil & { isPaused?: () => boolean; unpauseVfs?: () => Promise<unknown> };
+    if (p.isPaused?.()) {
+      // Al pausar se solto el candado, asi que hay que volver a tomarlo antes
+      // de reclamar los manejadores.
+      await tomarLock();
+      await p.unpauseVfs?.();
+    }
+    return pool;
+  }
   if (poolPromise) return poolPromise;
 
   const api = sqlite3 as Sqlite3WithOpfs;
@@ -134,64 +198,58 @@ export async function ensurePool(sqlite3: unknown, databases = 4): Promise<SAHPo
 
   poolPromise = (async () => {
     const install = api.installOpfsSAHPoolVfs!;
-    const run = async () =>
-      install({
-        name: POOL_VFS_NAME,
-        directory: POOL_DIR,
-        initialCapacity: slotsFor(databases),
-      });
 
     /**
-     * Reintento acotado ante manejadores aun retenidos.
+     * NO se reintenta aqui dentro, y la razon esta en la libreria.
      *
-     * Al recargar o navegar, el Worker de la pagina anterior puede seguir con
-     * los manejadores de OPFS tomados unos instantes. El navegador los libera
-     * al destruir aquel contexto, pero no de inmediato, asi que el primer
-     * intento falla con "Access Handles cannot be created...". Es una carrera,
-     * no un estado permanente.
+     * `acquireAccessHandles()` pide todos los manejadores con un `Promise.all`.
+     * Si uno falla, llama a `releaseAccessHandles()` y lanza -- pero las otras
+     * llamadas a `createSyncAccessHandle()` siguen en vuelo, y al resolver se
+     * apuntan en un mapa que ya nadie va a vaciar. Quedan **huerfanas dentro de
+     * este Worker**, sin forma de alcanzarlas desde fuera de la libreria.
      *
-     * Reintentar es seguro PARA ESTE fallo concreto: la libreria, al fallar,
-     * intenta `removeVfs()` (que borraria el directorio entero), pero ese
-     * borrado tambien choca con los mismos manejadores retenidos y no llega a
-     * ejecutarse. Comprobado: tras un fallo asi, el catalogo seguia intacto en
-     * disco. Otros fallos NO se reintentan, porque ahi el borrado si podria
-     * haber ocurrido y reintentar solo repetiria el dano.
+     * Por eso un reintento en el mismo Worker no solo no ayuda: choca contra
+     * los manejadores que filtro el intento anterior y no puede salir de ahi.
+     * La unica salida es terminar el Worker, que los suelta todos de golpe, y
+     * empezar con uno nuevo. Eso lo hace `worker-pool.ts`, que es quien tiene
+     * el Worker en la mano; aqui solo se etiqueta el fallo para que lo
+     * reconozca.
      */
-    const runWithRetry = async (): Promise<SAHPoolUtil> => {
-      const esperas = [150, 400, 900, 1800];
-      for (let intento = 0; ; intento++) {
-        try {
-          return await run();
-        } catch (err) {
-          const msg = err instanceof Error ? err.message : String(err);
-          const esCarrera = msg.includes('Access Handles cannot be created');
-          if (!esCarrera || intento >= esperas.length) throw err;
-          await new Promise((r) => setTimeout(r, esperas[intento]));
+    const run = async (): Promise<SAHPoolUtil> => {
+      try {
+        return await install({
+          name: POOL_VFS_NAME,
+          directory: POOL_DIR,
+          initialCapacity: slotsFor(databases),
+        });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        if (msg.includes('Access Handles cannot be created')) {
+          throw new OpfsUnavailableError(
+            'handles-busy',
+            'Los catálogos siguen en uso por la carga anterior de la página.',
+          );
         }
+        throw err;
       }
     };
 
-    let result: SAHPoolUtil;
-    if (navigator.locks?.request) {
-      const acquired = await navigator.locks.request(
-        POOL_LOCK,
-        { ifAvailable: true },
-        async (lock) => (lock ? runWithRetry() : undefined),
+    try {
+      await tomarLock();
+    } catch {
+      throw new OpfsUnavailableError(
+        'locked-by-other-tab',
+        'Veskan ya está abierto en otra pestaña. Los catálogos guardados solo pueden usarse en una a la vez.',
       );
-      if (!acquired) {
-        throw new OpfsUnavailableError(
-          'locked-by-other-tab',
-          'Veskan ya esta abierto en otra pestana. La copia local solo puede usarse en una a la vez.',
-        );
-      }
-      result = acquired;
-    } else {
-      // Sin la Lock API no hay proteccion posible; se intenta igualmente.
-      result = await runWithRetry();
     }
 
-    pool = result;
-    return result;
+    try {
+      pool = await run();
+    } catch (err) {
+      soltarLock();
+      throw err;
+    }
+    return pool;
   })();
 
   try {
@@ -217,10 +275,17 @@ export async function ensurePool(sqlite3: unknown, databases = 4): Promise<SAHPo
  */
 export async function pausePool(): Promise<void> {
   const p = pool as (SAHPoolUtil & { pauseVfs?: () => unknown }) | undefined;
+  if (!p?.pauseVfs) return;
+  // `pauseVfs()` lanza SQLITE_MISUSE mientras quede una base abierta: cerrar
+  // los manejadores de archivo por debajo de SQLite seria comportamiento
+  // indefinido. Quien llama tiene que haberlas cerrado antes. Se avisa en vez
+  // de callar, porque un fallo aqui deja los manejadores tomados y la
+  // siguiente carga de la pagina no encuentra sus catalogos.
   try {
-    p?.pauseVfs?.();
-  } catch {
-    /* si no se puede, el navegador acabara liberandolos igual */
+    p.pauseVfs();
+    soltarLock();
+  } catch (err) {
+    console.warn('[opfs] no se han podido liberar los manejadores:', err);
   }
 }
 

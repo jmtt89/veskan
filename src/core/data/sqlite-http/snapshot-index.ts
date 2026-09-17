@@ -31,20 +31,6 @@ export interface SnapshotIndex {
   countries: Record<string, SnapshotCountryEntry>;
 }
 
-export type SnapshotStrategy = 'download' | 'range';
-
-/**
- * Umbral por encima del cual se consulta por rangos en vez de descargar.
- *
- * 20 MB sin comprimir son unos 6 MB por la red. Por encima de eso, una descarga
- * en datos moviles deja de ser razonable para el beneficio que da.
- */
-export const DOWNLOAD_THRESHOLD_BYTES = 20 * 1024 * 1024;
-
-export function strategyFor(entry: SnapshotCountryEntry): SnapshotStrategy {
-  return entry.bytes <= DOWNLOAD_THRESHOLD_BYTES ? 'download' : 'range';
-}
-
 let cached: SnapshotIndex | undefined;
 
 export async function loadSnapshotIndex(
@@ -64,23 +50,6 @@ export async function loadSnapshotIndex(
   }
 }
 
-/**
- * Paises disponibles, ordenados por cobertura.
- * Se muestran al usuario para que elija el suyo.
- */
-export function availableCountries(
-  index: SnapshotIndex,
-): Array<{ code: string; products: number; bytes: number; strategy: SnapshotStrategy }> {
-  return Object.entries(index.countries)
-    .map(([code, entry]) => ({
-      code,
-      products: entry.products,
-      bytes: entry.bytes,
-      strategy: strategyFor(entry),
-    }))
-    .sort((a, b) => b.products - a.products);
-}
-
 export const COUNTRY_LABELS: Record<string, string> = {
   spain: 'España',
   mexico: 'México',
@@ -91,15 +60,6 @@ export const COUNTRY_LABELS: Record<string, string> = {
   peru: 'Perú',
   'united-states': 'Estados Unidos',
 };
-
-/**
- * Paises cuyo catalogo conviene tener aunque no sea el del usuario.
- *
- * En Latinoamerica los importados estadounidenses son habituales: medido sobre
- * nuestros propios snapshots, el 19,3% del catalogo mexicano y el 13,8% del
- * venezolano llevan prefijo GS1 de Estados Unidos.
- */
-export const COMPLEMENTARY_COUNTRIES = ['united-states'];
 
 /** Deduce el pais a partir del idioma y la zona horaria del navegador. */
 export function guessCountry(available: string[]): string | undefined {

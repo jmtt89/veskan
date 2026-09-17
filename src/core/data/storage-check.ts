@@ -151,6 +151,22 @@ export function opfsUnsupportedMessage(reason: string): UserMessage {
         'vuelve a intentarlo; mientras tanto, la aplicación funciona consultando en línea.',
     };
   }
+  if (reason === 'handles-busy') {
+    return {
+      title: 'El almacén local sigue ocupado',
+      body:
+        'La carga anterior de la página todavía lo estaba usando y no se ha soltado a tiempo. ' +
+        'Vuelve a cargar la página y volverá a aparecer. Tus catálogos no se han perdido.',
+    };
+  }
+  if (reason === 'unknown') {
+    return {
+      title: 'No se ha podido abrir el almacén local',
+      body:
+        'Tus catálogos siguen guardados, pero esta vez no se han podido abrir. Vuelve a ' +
+        'cargar la página; mientras tanto, Veskan funciona consultando en línea.',
+    };
+  }
   if (reason === 'too-old') {
     return {
       title: 'Navegador demasiado antiguo',

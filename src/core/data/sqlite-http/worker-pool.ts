@@ -68,11 +68,62 @@ function handle(res: WorkerResponse): void {
 
   clearTimeout(entry.timer);
   pending.delete(res.id);
-  if (res.ok) entry.resolve(res.result);
-  else entry.reject(new Error(res.error));
+  if (res.ok) {
+    entry.resolve(res.result);
+  } else {
+    const err = new Error(res.error) as Error & { code?: string };
+    if (res.code) err.code = res.code;
+    entry.reject(err);
+  }
 }
 
-export function send<T = unknown>(
+/**
+ * Tira el Worker actual y despierta a los que esperaban.
+ *
+ * Terminarlo es la unica forma de soltar los manejadores de OPFS que la
+ * libreria puede dejar huerfanos dentro de el (ver `opfs-store.ts`).
+ */
+function discardWorker(motivo: string): void {
+  worker?.terminate();
+  worker = undefined;
+  const err = new Error(motivo);
+  for (const [, p] of pending) {
+    clearTimeout(p.timer);
+    p.reject(err);
+  }
+  pending.clear();
+}
+
+/**
+ * Espera entre intentos tras un choque de manejadores de OPFS.
+ *
+ * Lo que se espera es que muera el contexto de la carga anterior de la pagina.
+ * El navegador no da aviso de cuando ocurre, asi que se sondea con pausas
+ * crecientes hasta unos 8 segundos en total.
+ */
+const ESPERAS_REINTENTO = [200, 600, 1400, 2500, 3500];
+
+export async function send<T = unknown>(
+  msg: WorkerCommand,
+  opts: { timeout?: number; onProgress?: ProgressHandler } = {},
+): Promise<T> {
+  for (let intento = 0; ; intento++) {
+    try {
+      return await sendOnce<T>(msg, opts);
+    } catch (err) {
+      const code = (err as { code?: string }).code;
+      if (code !== 'handles-busy' || intento >= ESPERAS_REINTENTO.length) throw err;
+      // Con uno nuevo se empieza sin los manejadores que filtro el anterior.
+      console.info(
+        `[opfs] manejadores aun ocupados; reiniciando el Worker (intento ${intento + 1})`,
+      );
+      discardWorker('Reiniciando el almacenamiento local');
+      await new Promise((r) => setTimeout(r, ESPERAS_REINTENTO[intento]));
+    }
+  }
+}
+
+function sendOnce<T = unknown>(
   msg: WorkerCommand,
   opts: { timeout?: number; onProgress?: ProgressHandler } = {},
 ): Promise<T> {

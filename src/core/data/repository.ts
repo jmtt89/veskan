@@ -10,7 +10,7 @@ import type { Assessment, Product } from '../types.js';
 import { scoreProduct, type ScoringContext } from '../scoring/engine.js';
 import { assessCosmetic } from '../scoring/cosmetics.js';
 import { OffClient, OffNotFoundError, OffRateLimitError } from './off.js';
-import { SqliteHttpSource } from './sqlite-http/client.js';
+import type { CatalogManager } from './catalog-manager.js';
 import { addHistory, getCachedProduct, putCachedProduct } from './idb.js';
 
 /**
@@ -46,10 +46,10 @@ export class ProductNotFoundError extends Error {
 export interface RepositoryOptions {
   off: OffClient;
   /**
-   * Snapshot estatico opcional. Sin el, la app funciona solo con L0 + L2.
-   * Mutable: se asigna cuando se sabe el pais y su estrategia.
+   * Gestor de catalogos. Sin el, la app funciona solo con cache y API en vivo.
+   * Mutable: se asigna cuando se ha leido el indice publicado.
    */
-  snapshot?: SqliteHttpSource;
+  catalogs?: CatalogManager;
   scoringContext: () => Promise<ScoringContext>;
 }
 
@@ -66,18 +66,17 @@ export class ProductRepository {
   constructor(private readonly opts: RepositoryOptions) {}
 
   /**
-   * Fija o cambia la fuente del snapshot ya en marcha.
+   * Fija el gestor de catalogos ya en marcha.
    *
-   * Hace falta porque la estrategia (descargar entero o consultar por rangos) y
-   * la URL dependen del pais y del tamano publicado en el indice, que se lee
-   * despues de arrancar. Y porque el usuario puede cambiar de pais sin recargar.
+   * Hace falta porque el indice publicado se lee despues de arrancar: la
+   * aplicacion ya es usable contra la API mientras tanto.
    */
-  setSnapshot(source: SqliteHttpSource | undefined): void {
-    this.opts.snapshot = source;
+  setCatalogs(manager: CatalogManager | undefined): void {
+    this.opts.catalogs = manager;
   }
 
-  get snapshot(): SqliteHttpSource | undefined {
-    return this.opts.snapshot;
+  get catalogs(): CatalogManager | undefined {
+    return this.opts.catalogs;
   }
 
   /**
@@ -96,13 +95,16 @@ export class ProductRepository {
     }
 
     let snapshotHit: Product | undefined;
-    if (this.opts.snapshot && !cosmetic) {
+    if (this.opts.catalogs && !cosmetic) {
       onProgress?.('snapshot');
       try {
-        snapshotHit = await this.opts.snapshot.getProduct(barcode);
+        // El gestor recorre los catalogos por orden de probabilidad: primero
+        // los descargados (sin red), despues el que sugiere el prefijo GS1 por
+        // rangos, para no gastar cupo de la API si el producto ya lo tenemos.
+        snapshotHit = (await this.opts.catalogs.getProduct(barcode))?.product;
       } catch (err) {
-        // El snapshot es un acelerador, no una dependencia: si falla, se sigue.
-        console.warn('[repositorio] snapshot no disponible:', err);
+        // Los catalogos son un acelerador, no una dependencia: si fallan, se sigue.
+        console.warn('[repositorio] catalogos no disponibles:', err);
       }
       if (snapshotHit && !forceRefresh) {
         await putCachedProduct(snapshotHit);
@@ -153,13 +155,19 @@ export class ProductRepository {
     return { kind: 'food', product, score };
   }
 
-  /** Busqueda por texto. Solo el snapshot la soporta sin gastar cupo de la API. */
+  /**
+   * Busqueda por texto sobre los catalogos descargados.
+   *
+   * La API de Open Food Facts tambien sabe buscar, pero limita a 10 busquedas
+   * por minuto y necesita red. Los catalogos locales no tienen ninguno de los
+   * dos problemas.
+   */
   async search(term: string, limit = 25): Promise<Product[]> {
-    if (!this.opts.snapshot) return [];
+    if (!this.opts.catalogs) return [];
     try {
-      return await this.opts.snapshot.search(term, limit);
+      return await this.opts.catalogs.search(term, limit);
     } catch (err) {
-      console.warn('[repositorio] busqueda en snapshot fallida:', err);
+      console.warn('[repositorio] busqueda en catalogos fallida:', err);
       return [];
     }
   }

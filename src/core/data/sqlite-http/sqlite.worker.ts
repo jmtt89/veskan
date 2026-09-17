@@ -71,7 +71,7 @@ export type WorkerRequest =
 
 export type WorkerResponse =
   | { id: number; ok: true; result: unknown }
-  | { id: number; ok: false; error: string }
+  | { id: number; ok: false; error: string; code?: string }
   /** Progreso de descarga, para poder mostrar una barra en vez de un spinner mudo */
   | { id: number; progress: { loaded: number; total: number } };
 
@@ -209,6 +209,27 @@ async function openWithDownload(source: string, url: string, id: number) {
   return { ok: true as const, strategy: 'download' as const, source, columns: [...columns] };
 }
 
+/**
+ * Reabre un catalogo que quedo cerrado al pausar el pool.
+ *
+ * `pause` cierra las bases de OPFS porque `pauseVfs()` no admite archivos
+ * abiertos. Si la pagina vuelve de la cache de retroceso, la siguiente consulta
+ * llegaria a una fuente sin conexion aunque el archivo siga en disco.
+ */
+async function ensureOpen(source: string): Promise<void> {
+  if (connections.has(source)) return;
+  const api = await ensureSqlite();
+  const pool = await ensurePool(api, 4);
+  if (!listCatalogs(pool).includes(source)) return; // que falle con su mensaje
+  const db = openCatalog(pool, source);
+  connections.set(source, {
+    db,
+    strategy: 'download',
+    file: catalogFileName(source),
+    columns: readColumns(db),
+  });
+}
+
 /** Nombre con el que el catalogo vive dentro del pool de OPFS. */
 const catalogFileName = (source: string) => `${source}.sqlite3`;
 
@@ -276,12 +297,15 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
         break;
       }
       case 'query':
+        await ensureOpen(msg.source);
         reply({ id: msg.id, ok: true, result: query(msg.source, msg.sql, msg.params) });
         break;
       case 'search':
+        await ensureOpen(msg.source);
         reply({ id: msg.id, ok: true, result: search(msg.source, msg.term, msg.limit) });
         break;
       case 'get': {
+        await ensureOpen(msg.source);
         const rows = query(msg.source, msg.sql, msg.params);
         reply({ id: msg.id, ok: true, result: rows[0] ?? null });
         break;
@@ -319,6 +343,12 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
           });
         } catch (err) {
           const reason = err instanceof OpfsUnavailableError ? err.reason : 'unknown';
+          // `handles-busy` NO es un veredicto sobre el navegador, es una
+          // carrera con la carga anterior de la pagina. Si se contestara aqui
+          // con `opfs: false`, el cliente lo tomaria por una incapacidad
+          // permanente; hay que dejarlo salir como error para que
+          // `worker-pool` tire este Worker y lo intente con uno limpio.
+          if (reason === 'handles-busy') throw err;
           reply({
             id: msg.id, ok: true,
             result: { opfs: false, reason, detail: (err as Error).message, catalogs: [] },
@@ -327,6 +357,13 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
         break;
       }
       case 'pause':
+        // `pauseVfs()` lanza SQLITE_MISUSE si queda alguna base abierta en el
+        // pool -- cerrarlas por debajo seria comportamiento indefinido -- asi
+        // que hay que cerrarlas antes. Sin esto la pausa fallaba en silencio y
+        // la siguiente carga de la pagina no podia tomar los manejadores.
+        for (const [source, conn] of [...connections]) {
+          if (conn.strategy === 'download') closeConnection(source);
+        }
         await pausePool();
         reply({ id: msg.id, ok: true, result: null });
         break;
@@ -339,6 +376,13 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
       }
     }
   } catch (err) {
-    reply({ id: msg.id, ok: false, error: err instanceof Error ? err.message : String(err) });
+    reply({
+      id: msg.id,
+      ok: false,
+      error: err instanceof Error ? err.message : String(err),
+      // El codigo viaja aparte del texto: `worker-pool` decide con el si vale
+      // la pena tirar este Worker y reintentar con uno limpio.
+      code: err instanceof OpfsUnavailableError ? err.reason : undefined,
+    });
   }
 };
