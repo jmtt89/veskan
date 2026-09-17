@@ -100,6 +100,14 @@ describe('syncCost', () => {
     expect(syncCost(planSync('v0', e), e)).toContain('kB');
   });
 
+  it('no anuncia nada si lo publicado no dice de qué versión es', () => {
+    // Pasa con los catalogos publicados antes de que existieran los deltas.
+    // Decir «actualización disponible: 77 MB» seria inventarse que hay algo
+    // nuevo, y el usuario pagaria la descarga entera para nada.
+    const e: SnapshotCountryEntry = { file: 'x.sqlite3', products: 1, bytes: 76 * MB };
+    expect(syncCost(planSync('v1', e), e)).toBeUndefined();
+  });
+
   it('avisa de que la descarga completa es otra cosa', () => {
     const e = entrada(1);
     expect(syncCost({ kind: 'full', reason: 'cadena-rota' }, e)).toContain('entero');

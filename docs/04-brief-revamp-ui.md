@@ -367,3 +367,47 @@ Una propuesta es buena si:
    tiene en navegadores que no lo soporten.
 7. **Lo que descartaste y por qué.** Esta sección me interesa tanto como el
    resto.
+
+---
+
+## Estado: implementado (2026-09-17)
+
+El diseño devuelto (`Veskan revamp.dc.html`) está implementado. Los cinco
+cambios que planteaba:
+
+1. **Veredicto → razones → evidencia.** Nota y banda solas arriba; bento con los
+   cuatro bloques y el **área proporcional al peso** (55 · 20 · 20 · 5); tablas
+   plegadas y cerradas por defecto.
+2. **La incertidumbre se ve.** Anillo exterior con el rango, «≈» delante del
+   número, tres barras de confianza y qué falta. El rango **se calcula**: se
+   vuelve a puntuar con los datos desconocidos en su mejor y peor caso.
+3. **Todo en la zona del pulgar.** Cámara a pantalla completa; Foto, Código y
+   Linterna abajo; teclado numérico propio.
+4. **Cuatro pestañas.** Participar y Método pasan a «Más»; Guardado absorbe los
+   favoritos, que ya existían en el modelo y no se exponían.
+5. **Estados con acción.** Esqueletos con la forma del resultado; vacíos que
+   dicen qué hacer; errores que ofrecen el camino alternativo. Indicador de red
+   en la cabecera.
+
+### Dónde nos apartamos del diseño, y por qué
+
+- **«País y copia local» sigue siendo una lista de varios países**, no radios de
+  uno solo. El diseño es anterior a que la aplicación soportara varios
+  catálogos a la vez con actualización incremental; implementarlo al pie de la
+  letra habría destruido esa función. Se conserva el comportamiento y se le
+  aplica el lenguaje visual nuevo.
+- **Manrope se autoaloja** (4,9 kB, subconjunto de cifras) en vez de enlazarse
+  desde Google Fonts. Una hoja remota se cae sin red, y pedirla en cada visita
+  entregaría la IP del usuario a un tercero: la propia interfaz promete que «la
+  aplicación no envía ningún dato personal a ninguna parte».
+- **El prototipo del disparador flotante reubicable no se ha implementado.** El
+  escáner ya analiza en continuo, así que un botón de «leer ahora» no añade
+  capacidad; moverlo por la pantalla sí añade estado y superficie de fallo.
+
+### Verificado
+
+- Accesibilidad **100** en Lighthouse, en el escáner y en el resultado con la
+  evidencia desplegada.
+- Contrastes del tema claro **medidos sobre lo renderizado**, no sobre la tabla:
+  5,33 · 6,40 · 5,91 · 5,41 — todos por encima de 4,5:1.
+- 1.011 tests.

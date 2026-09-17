@@ -288,3 +288,63 @@ describe('Deteccion de productos sin datos utiles', () => {
     expect(hasUsableData(baseProduct({ name: undefined, nutriments: { energyKcal: 64 } }))).toBe(false);
   });
 });
+
+describe('rango de la nota cuando faltan datos', () => {
+  /**
+   * El rango es lo que sostiene el anillo punteado de la interfaz. Si se
+   * calculara mal, la aplicacion estaria afirmando una incertidumbre falsa,
+   * que es tan malo como fingir precision.
+   */
+  const ctx = { additiveTaxonomy: {}, additiveClasses: new Map() } as never;
+  const base = (extra: Record<string, unknown> = {}, more: Record<string, unknown> = {}) =>
+    ({
+      barcode: '1', name: 'X', source: 'off', additiveTags: [], categoryTags: [],
+      categoryFlags: { isBeverage: false, isWater: false, isCheese: false, isFatOilNutsSeeds: false, isRedMeat: false },
+      nutriments: { energyKj: 1490, sugars: 0.5, saturatedFat: 0.5, salt: 0, proteins: 7, fat: 1.5, ...extra },
+      ingredientsText: 'harina de maiz', ...more,
+    }) as never;
+
+  it('no inventa rango cuando no falta nada', () => {
+    const s = scoreProduct(
+      base({ fiber: 6, fruitsVegetablesLegumes: 0 }, { novaGroup: 3 }),
+      ctx,
+    );
+    expect(s.range).toBeUndefined();
+    expect(s.confidence.level).toBe('high');
+  });
+
+  it('acota hacia arriba lo que solo puede sumar', () => {
+    // Sin el % de frutas y verduras, hoy se cuenta como 0: la nota real solo
+    // puede ser igual o mejor, nunca peor.
+    const s = scoreProduct(base({ fiber: 6 }, { novaGroup: 3 }), ctx);
+    expect(s.range).toBeDefined();
+    expect(s.range!.min).toBe(s.value);
+    expect(s.range!.max).toBeGreaterThan(s.value);
+  });
+
+  it('acota en los dos sentidos lo que se sustituyo por un valor neutro', () => {
+    // Sin NOVA se aplica un neutro de 55, que puede quedarse corto por arriba
+    // (alimento sin procesar) y por abajo (ultraprocesado).
+    const s = scoreProduct(base({ fiber: 6, fruitsVegetablesLegumes: 0 }), ctx);
+    expect(s.range!.min).toBeLessThan(s.value);
+    expect(s.range!.max).toBeGreaterThan(s.value);
+  });
+
+  it('el rango siempre contiene la nota', () => {
+    for (const nov of [undefined, 1, 4]) {
+      for (const fib of [undefined, 6]) {
+        const s = scoreProduct(base({ fiber: fib }, { novaGroup: nov }), ctx);
+        if (!s.range) continue;
+        expect(s.range.min).toBeLessThanOrEqual(s.value);
+        expect(s.range.max).toBeGreaterThanOrEqual(s.value);
+      }
+    }
+  });
+
+  it('baja la confianza a media cuando algo no se ha contado', () => {
+    // Decir "confianza alta" con un aporte positivo sin contar seria mentir.
+    const s = scoreProduct(base({ fiber: 6 }, { novaGroup: 3 }), ctx);
+    expect(s.confidence.level).toBe('medium');
+    expect(s.confidence.notes.join(' ')).toContain('frutas');
+  });
+});

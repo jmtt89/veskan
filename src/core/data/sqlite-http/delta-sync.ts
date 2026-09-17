@@ -114,6 +114,10 @@ export function syncCost(plan: SyncPlan, entry: SnapshotCountryEntry): string | 
   const mb = (b: number) =>
     b < 1024 * 1024 ? `${Math.max(1, Math.round(b / 1024))} kB` : `${(b / 1024 / 1024).toFixed(1)} MB`;
   if (plan.kind === 'up-to-date') return undefined;
+  // Si lo publicado no dice de que version es, NO se sabe que haya nada nuevo.
+  // Anunciar una actualizacion aqui empujaria a rebajar el catalogo entero --
+  // 77 MB en Espana -- por algo que quiza no ha cambiado.
+  if (plan.kind === 'full' && plan.reason === 'sin-version-publicada') return undefined;
   if (plan.kind === 'deltas') {
     const dias = plan.chain.length;
     return `Actualización disponible: ${mb(plan.bytes)}${dias > 1 ? ` (${dias} días)` : ''}.`;

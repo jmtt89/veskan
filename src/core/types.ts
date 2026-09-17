@@ -200,6 +200,13 @@ export interface ScoreBreakdownItem {
 export interface HealthScore {
   /** 0-100. 100 = perfectamente saludable. */
   value: number;
+  /**
+   * Hasta donde podria llegar la nota si se supiera lo que falta.
+   *
+   * Solo aparece cuando la confianza no es alta. Se calcula volviendo a
+   * puntuar con los datos desconocidos en su mejor y peor caso, no estimando.
+   */
+  range?: { min: number; max: number };
   band: 'excellent' | 'good' | 'mediocre' | 'poor' | 'bad';
   breakdown: ScoreBreakdownItem[];
   confidence: Confidence;

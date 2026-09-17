@@ -3,64 +3,205 @@
    Movil primero: esta app se usa de pie en un pasillo de supermercado.
    --------------------------------------------------------------------------- */
 
+/*
+ * Escala de superficies por tinte, no por sombra: bg-0 (lienzo) -> bg-3. La
+ * sombra queda solo para lo que flota de verdad (hojas y botones flotantes).
+ *
+ * Los contrastes estan CALCULADOS contra --bg-1, que es el peor caso real
+ * (texto sobre tarjeta), no contra el lienzo. Todos cumplen AA (>= 4.5:1).
+ */
 :root {
-  --bg: #f7f8fa;
-  --surface: #ffffff;
-  --surface-2: #eef1f5;
-  --border: #dde2e9;
-  --text: #11161d;
-  --text-dim: #5a6472;
-  /* Verde de marca oscurecido hasta 5.41:1 con texto blanco. El #0f9d58
-     original daba 3.51:1 y no llegaba al minimo AA de 4.5:1. */
-  --accent: #0b7a44;
-  --accent-text: #ffffff;
-  /* Para el verde usado como TEXTO sobre fondo claro (pestana activa). */
-  --accent-fg: #0b7a44;
-  --danger: #d93025;
-  --warning: #f9a825;
+  color-scheme: dark light;
 
-  /* Estos colores se usan como FONDO con texto blanco encima, asi que todos
-     cumplen 4.5:1 contra blanco. Los tonos vivos originales (#f9a825 daba
-     1.97:1) eran ilegibles en ese uso. */
-  --score-excellent: #0d864b;
-  --score-good: #59802f;
-  --score-mediocre: #a46705;
-  --score-poor: #d73b0b;
-  --score-bad: #d93025;
+  --bg-0: #0e131a;
+  --bg-1: #161d26;
+  --bg-2: #1f2833;
+  --bg-3: #29343f;
+  --border: #303b47;
+  --border-strong: #4a5665;
 
-  --radius: 14px;
-  --radius-sm: 9px;
+  --ink: #edf1f5;          /* 14.95:1 */
+  --ink-2: #a3b0bd;        /*  7.68:1 */
+
+  --brand: #0b7a44;        /*  4.64:1 con texto blanco */
+  --brand-ink: #ffffff;
+  --brand-fg: #34d399;     /*  8.82:1 como texto */
+
+  --danger: #d93025;       /*  4.77:1 con texto blanco */
+  --danger-fg: #ff7b72;    /*  6.73:1 como texto */
+  --warning: #f9a825;      /*  8.61:1 como texto */
+  --warning-bg: rgb(249 168 37 / 18%);
+
+  /* Bandas: `-fg` para texto y trazos sobre superficie; el plano para usarlas
+     como FONDO con texto blanco encima. Son usos incompatibles y por eso van
+     separadas: un solo tono no puede cumplir ambos. */
+  --band-excellent: #0d864b;
+  --band-excellent-fg: #5fd48f;    /* 9.13:1 */
+  --band-good: #59802f;
+  --band-good-fg: #a3cf5c;         /* 9.40:1 */
+  --band-mediocre: #a46705;
+  --band-mediocre-fg: #f0b64a;     /* 9.29:1 */
+  --band-poor: #d73b0b;
+  --band-poor-fg: #ffb08a;         /* 9.56:1 */
+  --band-bad: #d93025;
+  --band-bad-fg: #ff7b72;          /* 6.73:1 */
+
+  /* Vidrio: solo cabecera, tabbar y hojas, y siempre con el fondo >= 72%
+     opaco, para que el texto se lea sobre el peor caso (video claro detras). */
+  --glass: rgb(14 19 26 / 78%);
+  --glass-nav: rgb(22 29 38 / 82%);
+  --glass-line: rgb(255 255 255 / 6%);
+
+  --radius-control: 12px;
+  --radius-tile: 16px;
+  --radius-card: 20px;
+  --radius-sheet: 24px;
+  --radius-pill: 999px;
+
   --gutter: 16px;
-  --shadow: 0 1px 2px rgb(16 24 40 / 6%), 0 4px 14px rgb(16 24 40 / 6%);
+  --shadow-sheet: 0 -12px 40px rgb(0 0 0 / 50%);
+  --shadow-float: 0 10px 30px rgb(0 0 0 / 45%);
 
   --font: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
   --font-num: ui-monospace, 'SF Mono', 'Cascadia Code', Menlo, monospace;
+  /* Manrope va subconjuntada a las cifras (4,9 kB) y solo se usa para la nota
+     y los datos del desglose. El resto es la fuente del sistema. */
+  --font-display: Manrope, system-ui, sans-serif;
+
+  --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --dur: 0.2s;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme='light']) {
-    /* El verde de fondo no cambia (el texto blanco encima sigue cumpliendo);
-       el verde de TEXTO si, porque sobre fondo oscuro debe aclararse. */
-    --accent-fg: #34d399;
-    --bg: #0b0f14;
-    --surface: #151b23;
-    --surface-2: #1e262f;
-    --border: #2a333d;
-    --text: #e8edf3;
-    --text-dim: #93a1b1;
-    --shadow: 0 1px 2px rgb(0 0 0 / 40%), 0 6px 18px rgb(0 0 0 / 30%);
+/*
+ * Tema claro: mismos tokens, otros valores. El prototipo se diseno en oscuro,
+ * pero el sistema es el mismo y la mitad de la gente lleva el movil en claro.
+ */
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme='dark']) {
+    --bg-0: #f4f6f8;
+    --bg-1: #ffffff;
+    --bg-2: #eef1f5;
+    --bg-3: #e2e7ee;
+    --border: #dde2e9;
+    --border-strong: #b9c2ce;
+
+    --ink: #131920;        /* 17.68:1 */
+    --ink-2: #55606d;      /*  6.40:1 */
+    --brand-fg: #0b7a44;   /*  5.41:1 */
+    --danger-fg: #c5221f;
+    --warning: #8a5a00;    /*  5.93:1 */
+    --warning-bg: rgb(138 90 0 / 12%);
+
+    --band-excellent-fg: #0d864b;   /* 4.64:1 */
+    --band-good-fg: #4a7026;        /* 5.77:1 */
+    --band-mediocre-fg: #a46705;    /* 4.65:1 */
+    --band-poor-fg: #c2410c;        /* 5.18:1 */
+    --band-bad-fg: #d93025;         /* 4.77:1 */
+
+    --glass: rgb(244 246 248 / 80%);
+    --glass-nav: rgb(255 255 255 / 85%);
+    --glass-line: rgb(16 24 40 / 8%);
+    --shadow-sheet: 0 -12px 40px rgb(16 24 40 / 18%);
+    --shadow-float: 0 10px 30px rgb(16 24 40 / 20%);
   }
 }
 
-:root[data-theme='dark'] {
-  --accent-fg: #34d399;
-  --bg: #0b0f14;
-  --surface: #151b23;
-  --surface-2: #1e262f;
-  --border: #2a333d;
-  --text: #e8edf3;
-  --text-dim: #93a1b1;
-  --shadow: 0 1px 2px rgb(0 0 0 / 40%), 0 6px 18px rgb(0 0 0 / 30%);
+:root[data-theme='light'] {
+  --bg-0: #f4f6f8;
+  --bg-1: #ffffff;
+  --bg-2: #eef1f5;
+  --bg-3: #e2e7ee;
+  --border: #dde2e9;
+  --border-strong: #b9c2ce;
+  --ink: #131920;
+  --ink-2: #55606d;
+  --brand-fg: #0b7a44;
+  --danger-fg: #c5221f;
+  --warning: #8a5a00;
+  --warning-bg: rgb(138 90 0 / 12%);
+  --band-excellent-fg: #0d864b;
+  --band-good-fg: #4a7026;
+  --band-mediocre-fg: #a46705;
+  --band-poor-fg: #c2410c;
+  --band-bad-fg: #d93025;
+  --glass: rgb(244 246 248 / 80%);
+  --glass-nav: rgb(255 255 255 / 85%);
+  --glass-line: rgb(16 24 40 / 8%);
+  --shadow-sheet: 0 -12px 40px rgb(16 24 40 / 18%);
+  --shadow-float: 0 10px 30px rgb(16 24 40 / 20%);
+}
+
+/* Compatibilidad con el nombre antiguo de los tokens que aun usa algun bloque. */
+:root {
+  --bg: var(--bg-0);
+  --surface: var(--bg-1);
+  --surface-2: var(--bg-2);
+  --text: var(--ink);
+  --text-dim: var(--ink-2);
+  --accent: var(--brand);
+  --accent-text: var(--brand-ink);
+  --accent-fg: var(--brand-fg);
+  --radius: var(--radius-tile);
+  --radius-sm: var(--radius-control);
+  --shadow: var(--shadow-float);
+}
+
+@font-face {
+  font-family: Manrope;
+  font-style: normal;
+  font-weight: 500 800;
+  font-display: swap;
+  src: url('/fonts/manrope-digits.woff2') format('woff2');
+  /* Subconjunto: cifras, %, guion y el signo de aproximacion de la nota. */
+  unicode-range: U+25, U+30-39, U+2013, U+2248;
+}
+
+@keyframes vk-rise {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes vk-shimmer {
+  from {
+    background-position: 200% 0;
+  }
+
+  to {
+    background-position: -200% 0;
+  }
+}
+
+@keyframes vk-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes vk-sweep {
+  0%,
+  100% {
+    transform: translateY(-70px);
+  }
+
+  50% {
+    transform: translateY(70px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+  }
 }
 
 * {
@@ -84,648 +225,1719 @@ body {
   overscroll-behavior-y: none;
 }
 
+
+/* ===========================================================================
+   Armazon de pantalla
+   =========================================================================== */
+
 #app {
   min-height: 100%;
+  padding-bottom: 0;
+}
+
+/* Cada vista ocupa la pantalla entera y desplaza SOLO su cuerpo: la cabecera y
+   la barra de pestanas se quedan donde estan, que es lo que hace que la zona
+   del pulgar sea fiable. */
+.screen {
+  position: fixed;
+  inset: 0;
   display: flex;
   flex-direction: column;
-  padding-bottom: calc(64px + env(safe-area-inset-bottom));
+  background: var(--bg-0);
 }
 
-/* --- Cabecera --- */
-.app-header {
-  position: sticky;
-  top: 0;
-  z-index: 20;
+.scroll {
+  flex: 1;
+  overflow: auto;
+  overscroll-behavior: contain;
+  /* 112px: barra de pestanas (66) mas holgura. Con la barra de acciones del
+     resultado encima hace falta bastante mas, o el pie queda tapado. */
+  padding: 12px var(--gutter) calc(112px + env(safe-area-inset-bottom));
+  scrollbar-width: none;
+}
+
+.screen:has(.thumb-bar) .scroll {
+  padding-bottom: calc(172px + env(safe-area-inset-bottom));
+}
+
+.scroll::-webkit-scrollbar {
+  display: none;
+}
+
+.glass-header {
+  position: relative;
+  z-index: 5;
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: calc(10px + env(safe-area-inset-top)) var(--gutter) 10px;
-  background: color-mix(in srgb, var(--bg) 88%, transparent);
-  backdrop-filter: blur(12px);
-  border-bottom: 1px solid var(--border);
+  gap: 8px;
+  padding: calc(14px + env(safe-area-inset-top)) 10px 10px;
+  background: var(--glass);
+  backdrop-filter: blur(16px) saturate(1.2);
+  border-bottom: 1px solid var(--glass-line);
 }
 
-.app-header h1 {
-  font-size: 1.05rem;
-  font-weight: 650;
+.glass-header.col {
+  display: block;
+  padding: calc(14px + env(safe-area-inset-top)) var(--gutter) 10px;
+}
+
+/* Sobre el video no hay borde, sino un degradado: una linea dura recortaria la
+   imagen y haria parecer que la camara no ocupa la pantalla entera. */
+.glass-header.over {
+  position: absolute;
+  inset: 0 0 auto;
+  background: linear-gradient(var(--bg-0) 20%, transparent);
+  border-bottom: 0;
+}
+
+.glass-header h1 {
   margin: 0;
+  font-size: 1.06rem;
+  font-weight: 650;
   letter-spacing: -0.01em;
 }
 
-.app-header .spacer {
+.glass-header .spacer {
   flex: 1;
 }
 
-/* --- Navegacion inferior --- */
-.tabbar {
-  position: fixed;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  z-index: 30;
-  display: grid;
-  grid-template-columns: repeat(5, 1fr);
-  background: color-mix(in srgb, var(--surface) 94%, transparent);
-  backdrop-filter: blur(12px);
-  border-top: 1px solid var(--border);
-  padding-bottom: env(safe-area-inset-bottom);
-}
-
-.tabbar button {
-  appearance: none;
-  border: 0;
-  background: none;
-  color: var(--text-dim);
-  font: inherit;
-  font-size: 0.7rem;
-  padding: 8px 4px 10px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 3px;
-  cursor: pointer;
-  position: relative;
-  /* Objetivo tactil de 44px minimo: se usa con una mano y en movimiento. */
-  min-height: 52px;
-}
-
-.tabbar button[aria-current='page'] {
-  color: var(--accent-fg);
-}
-
-.tabbar svg {
-  width: 22px;
-  height: 22px;
-}
-
-/* --- Contenedores --- */
-main {
-  flex: 1;
-  padding: var(--gutter);
-  max-width: 680px;
-  margin: 0 auto;
-  width: 100%;
-}
-
-.card {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 16px;
-  box-shadow: var(--shadow);
-  margin-bottom: 14px;
-}
-
-.card h2 {
-  margin: 0 0 10px;
-  font-size: 0.82rem;
-  font-weight: 650;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--text-dim);
-}
-
-/* --- Puntuacion --- */
-.score-hero {
-  display: flex;
-  align-items: center;
-  gap: 18px;
-}
-
-.score-dial {
-  --size: 104px;
-  width: var(--size);
-  height: var(--size);
-  flex: 0 0 auto;
-  position: relative;
-  display: grid;
-  place-items: center;
-}
-
-.score-dial svg {
-  position: absolute;
-  inset: 0;
-  transform: rotate(-90deg);
-}
-
-.score-dial .value {
-  font-family: var(--font-num);
-  font-size: 2rem;
-  font-weight: 700;
-  line-height: 1;
-}
-
-.score-dial .max {
-  font-size: 0.72rem;
-  color: var(--text-dim);
-}
-
-.score-meta h3 {
-  margin: 0 0 2px;
-  font-size: 1.15rem;
-  line-height: 1.25;
-}
-
-.score-meta .brand {
-  color: var(--text-dim);
-  font-size: 0.88rem;
-  margin: 0 0 6px;
-}
-
-.band {
-  display: inline-block;
-  padding: 3px 10px;
-  border-radius: 999px;
-  font-size: 0.78rem;
-  font-weight: 650;
-  color: #fff;
-}
-
-/* --- Barra de confianza --- */
-.confidence {
-  margin-top: 12px;
-  padding: 10px 12px;
-  border-radius: var(--radius-sm);
-  background: var(--surface-2);
-  font-size: 0.84rem;
-}
-
-.confidence .bar {
-  height: 6px;
-  border-radius: 3px;
-  background: var(--border);
-  overflow: hidden;
-  margin: 6px 0;
-}
-
-.confidence .bar > span {
-  display: block;
-  height: 100%;
-  background: var(--accent);
-  transition: width 0.3s ease;
-}
-
-.confidence.low .bar > span,
-.confidence.insufficient .bar > span {
-  background: var(--warning);
-}
-
-/* --- Desglose --- */
-.breakdown-row {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  gap: 4px 12px;
-  padding: 10px 0;
-  border-bottom: 1px solid var(--border);
-}
-
-.breakdown-row:last-child {
-  border-bottom: 0;
-}
-
-.breakdown-row .label {
-  font-weight: 600;
-  font-size: 0.92rem;
-}
-
-.breakdown-row .detail {
-  grid-column: 1 / -1;
-  font-size: 0.82rem;
-  color: var(--text-dim);
-}
-
-.breakdown-row .points {
-  font-family: var(--font-num);
-  font-size: 0.92rem;
-  white-space: nowrap;
-}
-
-/* --- Sellos OPS --- */
-.seals {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.seal {
-  background: #111;
-  color: #fff;
-  border: 2px solid #fff;
-  border-radius: 6px;
-  padding: 7px 10px;
-  font-size: 0.68rem;
-  font-weight: 800;
-  line-height: 1.15;
-  text-align: center;
-  text-transform: uppercase;
-  letter-spacing: 0.02em;
-  /* Octogono: evoca el sello real sin copiar el arte oficial. */
-  clip-path: polygon(
-    30% 0%, 70% 0%, 100% 30%, 100% 70%,
-    70% 100%, 30% 100%, 0% 70%, 0% 30%
-  );
-  min-width: 92px;
-  display: grid;
-  place-items: center;
-  aspect-ratio: 1;
-}
-
-/* --- Nutri-Score --- */
-.nutriscore-scale {
-  display: flex;
-  gap: 3px;
-}
-
-/* Los colores del Nutri-Score son los de la marca oficial y NO pueden
-   alterarse: su reglamento de uso incluye una carta grafica. Lo que si se
-   ajusta es el color del texto encima, que con el amarillo (#fecb02) en blanco
-   daba 1.53:1. Se fija por letra en el marcado. */
-.nutriscore-scale span {
-  flex: 1;
-  text-align: center;
-  padding: 7px 0;
-  font-weight: 800;
-  font-size: 0.92rem;
-  opacity: 0.32;
-  border-radius: 5px;
-  transition: opacity 0.2s;
-}
-
-.nutriscore-scale span[data-active='true'] {
-  opacity: 1;
-  transform: scale(1.08);
-}
-
-/* --- Aditivos --- */
-.additive {
-  padding: 11px 0;
-  border-bottom: 1px solid var(--border);
-}
-
-.additive:last-child {
-  border-bottom: 0;
-}
-
-.additive .head {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.risk-chip {
-  font-size: 0.68rem;
-  font-weight: 700;
-  padding: 2px 8px;
-  border-radius: 999px;
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-}
-
-.risk-high {
-  background: color-mix(in srgb, var(--danger) 18%, transparent);
-  color: var(--danger);
-}
-
-.risk-moderate {
-  background: color-mix(in srgb, var(--warning) 22%, transparent);
-  color: color-mix(in srgb, var(--warning) 75%, #000);
-}
-
-.risk-none {
-  background: color-mix(in srgb, var(--accent) 16%, transparent);
-  color: var(--accent);
-}
-
-.risk-unknown {
-  background: var(--surface-2);
-  color: var(--text-dim);
-}
-
-/* --- Escaner --- */
-.scanner-stage {
-  position: relative;
-  border-radius: var(--radius);
-  overflow: hidden;
-  background: #000;
-  aspect-ratio: 3 / 4;
-  max-height: 58vh;
-}
-
-.scanner-stage video {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
-.reticle {
-  position: absolute;
-  inset: 18% 8%;
-  border: 2px solid rgb(255 255 255 / 85%);
-  border-radius: 10px;
-  box-shadow: 0 0 0 100vmax rgb(0 0 0 / 42%);
-}
-
-.reticle::after {
-  content: '';
-  position: absolute;
-  left: 6%;
-  right: 6%;
-  top: 50%;
-  height: 2px;
-  background: var(--accent);
-  box-shadow: 0 0 10px var(--accent);
-  animation: sweep 2.1s ease-in-out infinite;
-}
-
-@keyframes sweep {
-  0%, 100% { transform: translateY(-46px); }
-  50% { transform: translateY(46px); }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .reticle::after { animation: none; }
-}
-
-/* --- Botones y formularios --- */
-/* Los selectores incluyen `a` porque algunas acciones son navegaciones reales
-   a otro sitio (la web de Open Food Facts) y deben ser enlaces de verdad, no
-   botones con un manejador: asi funcionan el clic central, "abrir en pestana
-   nueva" y los lectores de pantalla. */
-button.primary,
-button.secondary,
-a.primary,
-a.secondary {
-  appearance: none;
-  font: inherit;
-  font-weight: 620;
-  border-radius: var(--radius-sm);
-  padding: 13px 18px;
-  cursor: pointer;
-  min-height: 48px;
-  width: 100%;
-  border: 1px solid transparent;
-}
-
-button.primary,
-a.primary {
-  background: var(--accent);
-  color: var(--accent-text);
-  text-decoration: none;
-}
-
-button.secondary,
-a.secondary {
-  background: var(--surface-2);
-  color: var(--text);
-  border-color: var(--border);
-  text-decoration: none;
-}
-
-button:disabled {
-  opacity: 0.55;
-  cursor: not-allowed;
-}
-
-/*
- * Boton en linea dentro de una fila. Baja de 48 a 44 px de alto, que sigue muy
- * por encima de los 24 px que pide el criterio 2.5.8 de WCAG 2.2.
- */
-button.compact,
-a.compact {
-  width: auto;
-  min-height: 44px;
-  padding: 10px 16px;
-  font-size: 0.88rem;
-}
-
-input,
-textarea,
-select {
-  font: inherit;
-  width: 100%;
-  padding: 11px 12px;
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--border);
-  background: var(--surface);
-  color: var(--text);
-  min-height: 46px;
-}
-
-label {
-  display: block;
-  font-size: 0.82rem;
-  font-weight: 600;
-  color: var(--text-dim);
-  margin: 12px 0 5px;
-}
-
-/* --- Listas --- */
-.list-item {
-  display: flex;
-  gap: 12px;
-  align-items: center;
-  padding: 11px 0;
-  border-bottom: 1px solid var(--border);
-  cursor: pointer;
-}
-
-.list-item:last-child {
-  border-bottom: 0;
-}
-
-.list-item img,
-.list-item .placeholder {
-  width: 48px;
-  height: 48px;
-  border-radius: 9px;
-  object-fit: cover;
-  background: var(--surface-2);
-  flex: 0 0 auto;
-  display: grid;
-  place-items: center;
-  color: var(--text-dim);
-  font-size: 1.15rem;
-}
-
-.list-item .info {
+.crumb {
   flex: 1;
   min-width: 0;
-}
-
-.list-item .info strong {
-  display: block;
-  font-size: 0.94rem;
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--ink-2);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.list-item .info small {
-  color: var(--text-dim);
-  font-size: 0.8rem;
+.tabbar {
+  position: fixed;
+  inset: auto 0 0;
+  z-index: 30;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  padding: 6px 8px calc(8px + env(safe-area-inset-bottom));
+  background: var(--glass-nav);
+  backdrop-filter: blur(16px) saturate(1.2);
+  border-top: 1px solid var(--glass-line);
 }
 
-.mini-score {
-  width: 38px;
-  height: 38px;
-  border-radius: 50%;
+.tabbar button {
+  min-height: 52px;
+  border: 0;
+  background: none;
+  color: var(--ink-2);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  font: 600 0.69rem var(--font);
+  cursor: pointer;
+}
+
+.tabbar button.current {
+  color: var(--brand-fg);
+}
+
+.tab-pill {
   display: grid;
   place-items: center;
-  color: #fff;
-  font-weight: 700;
-  font-size: 0.88rem;
-  font-family: var(--font-num);
-  flex: 0 0 auto;
+  width: 44px;
+  height: 28px;
+  border-radius: var(--radius-pill);
+  transition: background var(--dur) var(--ease);
 }
 
-/* --- Avisos --- */
-.notice {
-  padding: 12px 14px;
-  border-radius: var(--radius-sm);
-  font-size: 0.86rem;
-  margin-bottom: 12px;
-  border: 1px solid;
+.tabbar button.current .tab-pill {
+  background: color-mix(in srgb, var(--brand-fg) 16%, transparent);
 }
 
-.notice.warn {
-  background: color-mix(in srgb, var(--warning) 12%, transparent);
-  border-color: color-mix(in srgb, var(--warning) 40%, transparent);
+.tab-pill svg {
+  width: 22px;
+  height: 22px;
 }
 
-.notice.error {
-  background: color-mix(in srgb, var(--danger) 10%, transparent);
-  border-color: color-mix(in srgb, var(--danger) 35%, transparent);
+/* ===========================================================================
+   Controles
+   =========================================================================== */
+
+button.primary,
+button.secondary,
+button.ghost,
+button.danger,
+.as-button {
+  appearance: none;
+  display: block;
+  width: 100%;
+  min-height: 48px;
+  padding: 12px 18px;
+  border-radius: var(--radius-control);
+  border: 1px solid transparent;
+  font: 600 0.94rem var(--font);
+  text-align: center;
+  text-decoration: none;
+  cursor: pointer;
 }
 
-.notice.info {
-  background: var(--surface-2);
+button.primary,
+.primary.as-button {
+  background: var(--brand);
+  color: var(--brand-ink);
+}
+
+button.primary.big {
+  min-height: 56px;
+  border-radius: var(--radius-tile);
+  font-size: 1rem;
+  font-weight: 650;
+  box-shadow: 0 8px 24px color-mix(in srgb, var(--brand) 35%, transparent);
+}
+
+button.secondary,
+.secondary.as-button {
+  background: var(--bg-2);
+  color: var(--ink);
   border-color: var(--border);
 }
 
-.empty {
-  text-align: center;
-  padding: 48px 20px;
-  color: var(--text-dim);
+button.ghost {
+  background: none;
+  color: var(--ink-2);
 }
 
-.empty .icon {
-  font-size: 2.6rem;
-  margin-bottom: 10px;
+button.danger {
+  background: var(--danger);
+  color: #fff;
 }
 
-.source-note {
-  font-size: 0.76rem;
-  color: var(--text-dim);
-  margin-top: 14px;
-  line-height: 1.55;
+button.compact,
+.compact {
+  width: auto;
+  min-height: 44px;
+  padding: 10px 16px;
+  font-size: 0.86rem;
+  white-space: nowrap;
 }
 
-.source-note a {
-  color: inherit;
+button.mini {
+  width: auto;
+  min-height: 40px;
+  padding: 0 14px;
+  font-size: 0.81rem;
 }
 
-.spinner {
-  width: 22px;
-  height: 22px;
-  border: 2.5px solid var(--border);
-  border-top-color: var(--accent);
+button:disabled,
+[aria-disabled='true'] {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.icon-btn {
+  width: 44px;
+  height: 44px;
+  flex: none;
+  border: 0;
   border-radius: 50%;
-  animation: spin 0.75s linear infinite;
-  margin: 0 auto;
+  background: none;
+  color: var(--ink);
+  font-size: 1.3rem;
+  line-height: 1;
+  cursor: pointer;
 }
 
-@keyframes spin {
-  to { transform: rotate(360deg); }
+.icon-btn.sm {
+  width: 32px;
+  height: 32px;
+  background: var(--bg-3);
+  font-size: 1rem;
 }
 
-.row {
-  display: flex;
-  gap: 10px;
+.icon-btn.star.on,
+.star.on {
+  color: var(--warning);
 }
 
-.row > * {
-  flex: 1;
+button.link,
+.link {
+  display: inline;
+  width: auto;
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--brand-fg);
+  font: 600 inherit;
+  text-decoration: underline;
+  cursor: pointer;
 }
 
-.nutrient-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 0.88rem;
+.pill-btn {
+  min-height: 36px;
+  padding: 0 12px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border);
+  background: none;
+  color: var(--ink-2);
+  font: 600 0.81rem var(--font);
+  cursor: pointer;
 }
 
-.nutrient-table td {
-  padding: 7px 0;
-  border-bottom: 1px solid var(--border);
+.chip-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 10px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--glass-line);
+  background: color-mix(in srgb, var(--bg-2) 70%, transparent);
+  backdrop-filter: blur(12px);
+  color: var(--ink);
+  font: 600 0.75rem var(--font);
+  cursor: pointer;
 }
 
-.nutrient-table td:last-child {
-  text-align: right;
+.chip-status .dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--brand-fg);
+}
+
+.chip-status.off .dot {
+  background: var(--warning);
+}
+
+.mono {
   font-family: var(--font-num);
 }
 
-.nutrient-table tr:last-child td {
-  border-bottom: 0;
+/* ===========================================================================
+   V1 · Escanear
+   =========================================================================== */
+
+.screen.scan {
+  background: #000;
 }
 
-.level-high { color: var(--danger); font-weight: 600; }
-.level-moderate { color: var(--warning); font-weight: 600; }
-.level-low { color: var(--accent); font-weight: 600; }
+.stage {
+  position: absolute;
+  inset: 0;
+  background: var(--bg-0);
+  overflow: hidden;
+}
 
-details summary {
-  cursor: pointer;
+.stage video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* La mascara oscurece TODO menos el recuadro, con una sombra enorme. Asi se
+   dirige la mirada sin dibujar cuatro rectangulos que habria que recolocar. */
+.reticle {
+  position: absolute;
+  left: 8%;
+  right: 8%;
+  top: 22%;
+  height: 200px;
+  border-radius: var(--radius-tile);
+  box-shadow: 0 0 0 100vmax color-mix(in srgb, var(--bg-0) 55%, transparent);
+  outline: 2px solid rgb(255 255 255 / 90%);
+  outline-offset: -2px;
+  overflow: hidden;
+}
+
+.reticle.idle {
+  box-shadow: none;
+  outline: 0;
+  border: 2px dashed var(--border);
+  display: grid;
+  place-items: center;
+  text-align: center;
+  padding: 20px;
+}
+
+.reticle-t {
+  font-size: 0.94rem;
   font-weight: 600;
-  font-size: 0.88rem;
-  padding: 6px 0;
 }
 
-/* --------------------------------------------------------------------------
- * Lista de catalogos por pais
- * ------------------------------------------------------------------------ */
+.reticle-s {
+  font-size: 0.81rem;
+  color: var(--ink-2);
+  margin-top: 4px;
+}
+
+.sweep {
+  position: absolute;
+  left: 6%;
+  right: 6%;
+  top: 50%;
+  height: 2px;
+  background: var(--brand-fg);
+  box-shadow: 0 0 12px var(--brand-fg);
+  animation: vk-sweep 2.1s ease-in-out infinite;
+}
+
+/* Todo lo pulsable, en el tercio inferior: es donde llega el pulgar de una
+   mano que ademas sujeta el movil y empuja un carro. */
+.thumb-zone {
+  position: absolute;
+  inset: auto 0 0;
+  z-index: 5;
+  padding: 14px var(--gutter) calc(96px + env(safe-area-inset-bottom));
+  background: linear-gradient(transparent, var(--bg-0) 45%);
+}
+
+.thumb-zone .duo,
+.duo {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.trio {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.tool {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-height: 56px;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: var(--bg-2);
+  color: var(--ink);
+  font: 600 0.81rem var(--font);
+  cursor: pointer;
+}
+
+.tool.on {
+  border-color: var(--warning);
+  background: var(--warning-bg);
+}
+
+.install-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  margin-bottom: 10px;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: var(--bg-1);
+  font-size: 0.81rem;
+}
+
+.install-card img {
+  border-radius: 8px;
+}
+
+.install-card div {
+  flex: 1;
+  min-width: 0;
+}
+
+.install-card span {
+  display: block;
+  color: var(--ink-2);
+  font-size: 0.75rem;
+}
+
+.overlay-card {
+  position: absolute;
+  left: var(--gutter);
+  right: var(--gutter);
+  top: 150px;
+  z-index: 5;
+  padding: 20px;
+  border-radius: var(--radius-card);
+  border: 1px solid var(--border);
+  background: var(--bg-1);
+  text-align: center;
+  animation: vk-rise var(--dur) var(--ease);
+}
+
+.overlay-card p {
+  margin: 6px 0 14px;
+  font-size: 0.84rem;
+  color: var(--ink-2);
+  line-height: 1.5;
+}
+
+.overlay-card > :is(button, .as-button) + :is(button, .as-button) {
+  margin-top: 8px;
+}
+
+.overlay-icon {
+  width: 44px;
+  height: 44px;
+  margin: 0 auto 10px;
+  border-radius: var(--radius-control);
+  background: var(--bg-3);
+  display: grid;
+  place-items: center;
+  font-size: 1.25rem;
+}
+
+.overlay-icon.warn {
+  color: var(--warning);
+}
+
+.overlay-icon.bad {
+  color: var(--danger-fg);
+}
+
+.overlay-title {
+  font-weight: 650;
+  font-size: 1rem;
+}
+
+.scan-loading {
+  position: absolute;
+  left: var(--gutter);
+  right: var(--gutter);
+  top: 52%;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: var(--radius-tile);
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--bg-1) 92%, transparent);
+  backdrop-filter: blur(12px);
+  animation: vk-rise 0.15s ease-out;
+}
+
+.scan-loading strong,
+.scan-loading .mono {
+  display: block;
+}
+
+.scan-loading .mono {
+  font-size: 0.78rem;
+  color: var(--ink-2);
+}
+
+.spinner {
+  width: 20px;
+  height: 20px;
+  flex: none;
+  border-radius: 50%;
+  border: 2.5px solid var(--border);
+  border-top-color: var(--brand-fg);
+  animation: vk-spin 0.75s linear infinite;
+}
+
+.diag {
+  position: absolute;
+  top: calc(64px + env(safe-area-inset-top));
+  left: var(--gutter);
+  right: var(--gutter);
+  z-index: 6;
+  padding: 12px 14px;
+  border-radius: var(--radius-tile);
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--bg-1) 92%, transparent);
+  backdrop-filter: blur(16px);
+  animation: vk-rise var(--dur) var(--ease);
+}
+
+.diag-grid {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 6px 12px;
+  font: 0.75rem var(--font-num);
+}
+
+.diag-grid span:nth-child(odd) {
+  color: var(--ink-2);
+}
+
+.diag p {
+  margin: 10px 0 0;
+  font-size: 0.75rem;
+  color: var(--ink-2);
+  line-height: 1.5;
+}
+
+/* ===========================================================================
+   V2 · Resultado: veredicto
+   =========================================================================== */
+
+.verdict {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  padding-top: 4px;
+  animation: vk-rise 0.25s var(--ease);
+}
+
+.dial {
+  position: relative;
+  width: 124px;
+  height: 124px;
+  flex: none;
+  display: grid;
+  place-items: center;
+}
+
+.dial svg {
+  position: absolute;
+  inset: 0;
+  transform: rotate(-90deg);
+}
+
+.dial circle {
+  fill: none;
+  stroke-width: 10;
+}
+
+.dial-track {
+  stroke: var(--bg-2);
+}
+
+/* El arco del RANGO va detras, mas grueso y translucido: se lee como «podria
+   estar por aqui» sin competir con el valor. */
+.dial-range {
+  stroke: currentcolor;
+  stroke-opacity: 0.4;
+  stroke-width: 14;
+}
+
+.dial-value {
+  stroke: currentcolor;
+  stroke-linecap: round;
+  transition: stroke-dasharray 0.4s var(--ease);
+}
+
+.dial-inner {
+  text-align: center;
+  line-height: 1;
+}
+
+.dial-score {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 2.75rem;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+  color: currentcolor;
+}
+
+.dial-of {
+  font-size: 0.69rem;
+  color: var(--ink-2);
+  margin-top: 4px;
+  letter-spacing: 0.04em;
+}
+
+.dial-none {
+  border: 10px solid var(--bg-2);
+  border-radius: 50%;
+  color: var(--ink-2);
+}
+
+.dial-nonum {
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--ink-2);
+}
+
+/* Las bandas dan color al anillo y al numero via currentColor, y su version
+   plana al distintivo, donde el texto va en blanco. */
+.band-excellent { color: var(--band-excellent-fg); }
+.band-good { color: var(--band-good-fg); }
+.band-mediocre { color: var(--band-mediocre-fg); }
+.band-poor { color: var(--band-poor-fg); }
+.band-bad { color: var(--band-bad-fg); }
+.band-neutral { color: var(--ink-2); }
+
+.verdict-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.verdict-text h2 {
+  margin: 8px 0 2px;
+  font-size: 1.19rem;
+  line-height: 1.2;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  text-wrap: pretty;
+}
+
+.verdict-sub {
+  font-size: 0.84rem;
+  color: var(--ink-2);
+}
+
+.band-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border-radius: var(--radius-pill);
+  color: #fff;
+  font-weight: 700;
+  font-size: 0.81rem;
+}
+
+.band-pill.band-excellent { background: var(--band-excellent); }
+.band-pill.band-good { background: var(--band-good); }
+.band-pill.band-mediocre { background: var(--band-mediocre); }
+.band-pill.band-poor { background: var(--band-poor); }
+.band-pill.band-bad { background: var(--band-bad); }
+
+.band-pill.band-neutral {
+  background: var(--bg-3);
+  color: var(--ink);
+}
+
+/* Certeza ------------------------------------------------------------------ */
+
+.confidence {
+  width: 100%;
+  text-align: left;
+  margin-top: 14px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: var(--bg-1);
+  color: var(--ink);
+  font: inherit;
+  cursor: pointer;
+}
+
+.confidence.conf-medium,
+.confidence.conf-low,
+.confidence.conf-insufficient {
+  border-color: color-mix(in srgb, var(--warning) 40%, transparent);
+  background: color-mix(in srgb, var(--warning) 7%, var(--bg-1));
+}
+
+.confidence.conf-high {
+  border-color: color-mix(in srgb, var(--brand-fg) 28%, transparent);
+  background: color-mix(in srgb, var(--brand-fg) 6%, var(--bg-1));
+}
+
+/* Tres barras crecientes. Nunca van solas: al lado hay texto, porque el color
+   y la altura no comunican nada a quien no los distingue. */
+.conf-bars {
+  display: flex;
+  gap: 3px;
+  align-items: flex-end;
+  height: 14px;
+  flex: none;
+}
+
+.conf-bars span {
+  width: 5px;
+  border-radius: 2px;
+  background: var(--border);
+}
+
+.conf-bars span:nth-child(1) { height: 6px; }
+.conf-bars span:nth-child(2) { height: 10px; }
+.conf-bars span:nth-child(3) { height: 14px; }
+
+.conf-high .conf-bars span.on { background: var(--brand-fg); }
+.conf-medium .conf-bars span.on,
+.conf-low .conf-bars span.on,
+.conf-insufficient .conf-bars span.on,
+.conf-bars.warn span.on { background: var(--warning); }
+
+.conf-text {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.84rem;
+  color: var(--ink-2);
+}
+
+.conf-text strong {
+  color: var(--ink);
+}
+
+.confidence-detail {
+  padding: 10px 12px 4px;
+  font-size: 0.81rem;
+  color: var(--ink-2);
+  line-height: 1.55;
+  animation: vk-rise var(--dur) ease-out;
+}
+
+.chevron {
+  color: var(--ink-2);
+  font-size: 0.75rem;
+  transition: transform var(--dur) var(--ease);
+}
+
+.chevron.open {
+  transform: rotate(180deg);
+}
+
+.chevron-right {
+  color: var(--ink-2);
+  flex: none;
+}
+
+/* ===========================================================================
+   V2 · Razones: bento
+   =========================================================================== */
+
+.section-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.reasons {
+  margin-top: 22px;
+}
+
+.reasons h3,
+.evidence h3,
+.sub-head {
+  margin: 0;
+  font-size: 0.81rem;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-2);
+}
+
+.sub-head {
+  margin: 22px 2px 8px;
+}
+
+.section-head .mono {
+  font-size: 0.75rem;
+  color: var(--ink-2);
+}
+
+/* El area de cada bloque sigue su peso en el algoritmo (55 · 20 · 20 · 5).
+   Con cuatro tarjetas iguales el usuario deduciria que pesan lo mismo. */
+.bento {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.tile {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 112px;
+  padding: 14px;
+  border-radius: var(--radius-tile);
+  border: 1px solid var(--border);
+  background: var(--bg-1);
+  color: var(--ink);
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+  transition: transform 0.15s var(--ease), border-color 0.15s var(--ease);
+}
+
+.tile:hover {
+  border-color: var(--border-strong);
+  transform: translateY(-1px);
+}
+
+.tile.wide {
+  grid-column: 1 / -1;
+  min-height: 118px;
+}
+
+.tile.short {
+  min-height: 72px;
+}
+
+.tile-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.tile-label {
+  font-size: 0.78rem;
+  color: var(--ink-2);
+  font-weight: 600;
+}
+
+.tile-pts {
+  font-size: 0.75rem;
+  color: var(--ink-2);
+  white-space: nowrap;
+}
+
+.tile-pts .of {
+  opacity: 0.6;
+}
+
+.tile-body {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.tile-facts {
+  min-width: 0;
+}
+
+.tile-fact {
+  display: block;
+  font-family: var(--font-display);
+  font-size: 1.25rem;
+  font-weight: 750;
+  letter-spacing: -0.01em;
+  line-height: 1.1;
+}
+
+.tile.wide .tile-fact {
+  font-size: 1.38rem;
+}
+
+.tile.short .tile-fact {
+  font-size: 1rem;
+}
+
+.tile-sub {
+  display: block;
+  font-size: 0.78rem;
+  color: var(--ink-2);
+  margin-top: 3px;
+  text-wrap: pretty;
+}
+
+.ns-badge {
+  width: 44px;
+  height: 44px;
+  flex: none;
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+  font-weight: 800;
+  font-size: 1.5rem;
+}
+
+.tile-bar {
+  display: block;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--bg-2);
+  overflow: hidden;
+}
+
+.tile-bar span {
+  display: block;
+  height: 100%;
+}
+
+.tile-bar.good span { background: var(--band-excellent-fg); }
+.tile-bar.mid span { background: var(--band-mediocre-fg); }
+.tile-bar.bad span { background: var(--band-bad-fg); }
+
+/* Sellos OPS: la forma real del envase, que el usuario ya conoce. */
+.seals {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+}
+
+.seal {
+  width: 82px;
+  aspect-ratio: 1;
+  display: grid;
+  place-items: center;
+  padding: 8px;
+  background: #111;
+  color: #fff;
+  border: 2px solid #fff;
+  clip-path: polygon(30% 0, 70% 0, 100% 30%, 100% 70%, 70% 100%, 30% 100%, 0 70%, 0 30%);
+  font: 800 0.63rem/1.15 var(--font);
+  text-align: center;
+  text-transform: uppercase;
+}
+
+/* ===========================================================================
+   V2 · Evidencia
+   =========================================================================== */
+
+.evidence {
+  margin-top: 24px;
+}
+
+.ev-list {
+  margin-top: 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-tile);
+  background: var(--bg-1);
+  overflow: hidden;
+}
+
+.ev + .ev {
+  border-top: 1px solid var(--border);
+}
+
+.ev > button {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 52px;
+  padding: 10px 14px;
+  border: 0;
+  background: none;
+  color: var(--ink);
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+}
+
+.ev-title {
+  flex: 1;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.ev-meta {
+  font-size: 0.75rem;
+  color: var(--ink-2);
+  white-space: nowrap;
+}
+
+.ev-body {
+  padding: 0 14px 14px;
+  animation: vk-rise var(--dur) ease-out;
+}
+
+.ev-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--bg-2);
+  font-size: 0.84rem;
+}
+
+.ev-row span:first-child {
+  color: var(--ink);
+}
+
+.ev-row span:last-child {
+  color: var(--ink-2);
+}
+
+.ev-row.plain span:last-child {
+  color: var(--ink);
+}
+
+.ev-row.exceeded span:last-child {
+  color: var(--danger-fg);
+  font-weight: 600;
+}
+
+.ev-group {
+  margin: 10px 0 2px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-2);
+}
+
+.ev-text {
+  margin: 4px 0 0;
+  font-size: 0.84rem;
+  line-height: 1.55;
+}
+
+.ev-note {
+  margin: 10px 0 0;
+  font-size: 0.78rem;
+  line-height: 1.5;
+  color: var(--ink-2);
+}
+
+.add-row {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 48px;
+  padding: 8px 0;
+  border: 0;
+  border-bottom: 1px solid var(--bg-2);
+  background: none;
+  color: var(--ink);
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+}
+
+.add-e {
+  width: 44px;
+  flex: none;
+  font-size: 0.75rem;
+  color: var(--ink-2);
+}
+
+.add-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.88rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* El glifo acompana siempre al texto: el color por si solo no es informacion. */
+.chip {
+  flex: none;
+  padding: 3px 8px;
+  border-radius: var(--radius-pill);
+  font-size: 0.69rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.risk-high,
+.sev-prohibited {
+  background: color-mix(in srgb, var(--danger) 20%, transparent);
+  color: var(--danger-fg);
+}
+
+.risk-moderate,
+.sev-restricted {
+  background: var(--warning-bg);
+  color: var(--warning);
+}
+
+.risk-low,
+.risk-none {
+  background: color-mix(in srgb, var(--brand-fg) 14%, transparent);
+  color: var(--brand-fg);
+}
+
+.risk-unknown,
+.sev-allergen,
+.sev-info {
+  background: var(--bg-3);
+  color: var(--ink-2);
+}
+
+.fineprint {
+  margin: 14px 2px 0;
+  font-size: 0.78rem;
+  color: var(--ink-2);
+  line-height: 1.55;
+}
+
+.fineprint a {
+  color: var(--brand-fg);
+}
+
+.thumb-bar {
+  position: absolute;
+  inset: auto 0 0;
+  z-index: 5;
+  display: flex;
+  gap: 8px;
+  padding: 12px var(--gutter) calc(88px + env(safe-area-inset-bottom));
+  background: linear-gradient(transparent, var(--bg-0) 45%);
+}
+
+.thumb-bar .primary {
+  flex: 1;
+}
+
+.thumb-bar .secondary {
+  width: 52px;
+  flex: none;
+  font-size: 1.25rem;
+}
+
+/* ===========================================================================
+   Listas, vacios y esqueletos
+   =========================================================================== */
+
+.list {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-tile);
+  background: var(--bg-1);
+  overflow: hidden;
+}
+
+.list-row,
+.list-main.row,
+.kv {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+}
+
+.list > :is(.list-row, .list-main, .kv) + :is(.list-row, .list-main, .kv) {
+  border-top: 1px solid var(--border);
+}
+
+.list-main {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  min-height: 52px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--ink);
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+}
+
+.list-main.row {
+  width: 100%;
+  min-height: 56px;
+  padding: 10px 14px;
+}
+
+.list-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.list-name {
+  display: block;
+  font-size: 0.9rem;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.list-sub {
+  display: block;
+  font-size: 0.78rem;
+  color: var(--ink-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.thumb {
+  width: 48px;
+  height: 48px;
+  flex: none;
+  border-radius: var(--radius-control);
+  background: var(--bg-2);
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+}
+
+.thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* La nota en la lista es el rastro de informacion: dice de un vistazo a cual
+   volver, sin abrir nada. */
+.list-score {
+  flex: none;
+  text-align: right;
+}
+
+.list-score .n {
+  display: block;
+  font-family: var(--font-display);
+  font-size: 1.25rem;
+  font-weight: 800;
+  line-height: 1;
+  color: currentcolor;
+}
+
+.list-score .b {
+  display: block;
+  font-size: 0.69rem;
+  color: var(--ink-2);
+}
+
+.segmented {
+  display: flex;
+  gap: 6px;
+  padding: 4px;
+  margin-bottom: 12px;
+  border-radius: var(--radius-control);
+  border: 1px solid var(--border);
+  background: var(--bg-1);
+}
+
+.segmented button {
+  flex: 1;
+  min-height: 40px;
+  border: 0;
+  border-radius: 9px;
+  background: none;
+  color: var(--ink);
+  font: 600 0.84rem var(--font);
+  cursor: pointer;
+}
+
+.segmented button.on {
+  background: var(--bg-3);
+}
+
+/* Un vacio no es una pantalla en blanco con una frase: dice que hacer y
+   ofrece el boton para hacerlo. */
+.empty,
+.empty-block {
+  text-align: center;
+  padding: 44px 16px 24px;
+  animation: vk-rise var(--dur) ease-out;
+}
+
+.empty-block {
+  padding: 24px 16px;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-tile);
+  margin-top: 22px;
+}
+
+.empty-icon {
+  width: 64px;
+  height: 64px;
+  margin: 0 auto 14px;
+  border-radius: var(--radius-card);
+  border: 1px solid var(--border);
+  background: var(--bg-1);
+  display: grid;
+  place-items: center;
+  color: var(--ink-2);
+  font-size: 1.5rem;
+}
+
+.empty-title {
+  font-weight: 700;
+  font-size: 1.06rem;
+}
+
+.empty p,
+.empty-block p {
+  margin: 6px auto 18px;
+  max-width: 300px;
+  font-size: 0.84rem;
+  color: var(--ink-2);
+  line-height: 1.55;
+}
+
+.empty .primary,
+.empty .secondary {
+  width: auto;
+  display: inline-block;
+  padding: 0 22px;
+  min-height: 48px;
+  line-height: 48px;
+}
+
+.empty .duo .primary,
+.empty .duo .secondary {
+  width: 100%;
+  padding: 0;
+}
+
+.alt {
+  margin-top: 14px;
+  font-size: 0.81rem;
+  color: var(--ink-2);
+}
+
+.empty-block .conf-bars {
+  justify-content: center;
+  margin: 0 auto 10px;
+}
+
+.problem {
+  padding-top: 28px;
+  text-align: center;
+  animation: vk-rise var(--dur) ease-out;
+}
+
+.problem-icon {
+  width: 64px;
+  height: 64px;
+  margin: 0 auto 14px;
+  border-radius: var(--radius-card);
+  border: 1px solid var(--border);
+  background: var(--bg-1);
+  display: grid;
+  place-items: center;
+  font-size: 1.63rem;
+}
+
+.problem-icon.warn { color: var(--warning); }
+.problem-icon.bad { color: var(--danger-fg); }
+.problem-icon.dim { color: var(--ink-2); }
+
+.problem-code {
+  font-size: 0.75rem;
+  color: var(--ink-2);
+}
+
+.problem h2 {
+  margin: 6px 0 8px;
+  font-size: 1.25rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.problem p {
+  margin: 0 auto 20px;
+  max-width: 320px;
+  font-size: 0.88rem;
+  color: var(--ink-2);
+  line-height: 1.55;
+}
+
+.problem button + button {
+  margin-top: 8px;
+}
+
+/* El esqueleto tiene la FORMA del resultado: al llegar el dato, nada salta. */
+.shimmer,
+.sk-line,
+.sk-dial,
+.sk-pill {
+  background: linear-gradient(90deg, var(--bg-2) 25%, var(--bg-3) 50%, var(--bg-2) 75%);
+  background-size: 200% 100%;
+  animation: vk-shimmer 1.4s linear infinite;
+}
+
+.sk-verdict {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  padding-top: 4px;
+}
+
+.sk-dial {
+  width: 124px;
+  height: 124px;
+  border-radius: 50%;
+  flex: none;
+}
+
+.sk-lines {
+  flex: 1;
+  min-width: 0;
+}
+
+.sk-line {
+  height: 22px;
+  border-radius: 6px;
+  margin-bottom: 10px;
+}
+
+.sk-line.sm {
+  height: 14px;
+}
+
+.sk-pill {
+  height: 26px;
+  width: 40%;
+  border-radius: var(--radius-pill);
+}
+
+.w70 { width: 70%; }
+.w55 { width: 55%; }
+.w45 { width: 45%; }
+
+.sk-bento {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.sk-bento > div {
+  height: 112px;
+  border-radius: var(--radius-tile);
+  background: var(--bg-1);
+}
+
+.sk-bento > .wide { grid-column: 1 / -1; }
+.sk-bento > .short { height: 72px; }
+
+.sk-note {
+  margin-top: 16px;
+  font-size: 0.78rem;
+  color: var(--ink-2);
+}
+
+.list-row.sk {
+  gap: 12px;
+}
+
+/* ===========================================================================
+   V5 · Buscar
+   =========================================================================== */
+
+.search-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 48px;
+  margin-top: 10px;
+  padding: 0 12px;
+  border-radius: 14px;
+  border: 1px solid var(--border-strong);
+  background: var(--bg-1);
+  color: var(--ink-2);
+}
+
+.search-field.disabled {
+  border-color: var(--border);
+  opacity: 0.6;
+}
+
+.search-field input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: none;
+  color: var(--ink);
+  /* 16px exactos: por debajo, iOS hace zoom al enfocar el campo. */
+  font: 16px var(--font);
+  outline: none;
+}
+
+.result-count,
+.copy-line {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 4px 2px 8px;
+  font-size: 0.78rem;
+  color: var(--ink-2);
+}
+
+.ok {
+  color: var(--brand-fg);
+  font-weight: 600;
+}
+
+.pending {
+  color: var(--brand-fg);
+  font-weight: 600;
+}
+
+.chips {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.chip-btn {
+  min-height: 40px;
+  padding: 0 14px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border);
+  background: var(--bg-1);
+  color: var(--ink);
+  font: 0.88rem var(--font);
+  cursor: pointer;
+}
+
+/* ===========================================================================
+   Más
+   =========================================================================== */
+
+.lead {
+  margin: 4px 2px 12px;
+  font-size: 0.84rem;
+  color: var(--ink-2);
+  line-height: 1.5;
+}
+
+.tag {
+  display: inline-block;
+  padding: 2px 7px;
+  border-radius: var(--radius-pill);
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  vertical-align: 1px;
+}
+
+.tag.warn {
+  background: var(--warning-bg);
+  color: var(--warning);
+}
+
+.notice-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: var(--bg-1);
+  font-size: 0.84rem;
+}
+
+.notice-row div {
+  flex: 1;
+}
+
+.notice-row span {
+  display: block;
+  color: var(--ink-2);
+  font-size: 0.78rem;
+}
+
+.weights {
+  display: flex;
+  gap: 3px;
+  height: 14px;
+  border-radius: 7px;
+  overflow: hidden;
+  margin-top: 8px;
+}
+
+.w-nutrition { background: var(--band-excellent-fg); }
+.w-processing { background: var(--band-good-fg); }
+.w-additives { background: var(--band-mediocre-fg); }
+.w-regulatory { background: var(--ink-2); }
+
+.swatch {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  margin-right: 8px;
+}
+
+.list.tight .kv {
+  min-height: 48px;
+  padding: 12px 14px;
+  font-size: 0.88rem;
+  justify-content: space-between;
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.kv.block {
+  display: block;
+  line-height: 1.5;
+}
+
+.cards {
+  display: grid;
+  gap: 8px;
+}
+
+.mini-card {
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: var(--bg-1);
+  font-size: 0.84rem;
+  line-height: 1.5;
+}
+
+.mini-card p {
+  margin: 6px 0 12px;
+  color: var(--ink-2);
+}
+
+.soon {
+  padding: 20px 16px;
+  border-radius: var(--radius-card);
+  border: 1px solid var(--border);
+  background: var(--bg-1);
+  text-align: center;
+}
+
+.soon h2 {
+  margin: 10px 0 6px;
+  font-size: 1.13rem;
+  font-weight: 700;
+}
+
+.soon p {
+  margin: 0;
+  font-size: 0.84rem;
+  color: var(--ink-2);
+  line-height: 1.55;
+}
+
+.steps {
+  display: grid;
+  gap: 8px;
+}
+
+.step {
+  display: flex;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: var(--bg-1);
+  font-size: 0.84rem;
+  line-height: 1.5;
+}
+
+.step .n {
+  font: 800 1rem var(--font-display);
+  color: var(--brand-fg);
+  flex: none;
+}
+
+/* Catalogos ---------------------------------------------------------------- */
 
 .catalog-row {
   display: grid;
   grid-template-columns: 1fr auto;
   gap: 4px 12px;
   align-items: center;
-  padding: 12px 0;
-  border-bottom: 1px solid var(--border);
+  padding: 12px 14px;
 }
 
-.catalog-row:last-child {
-  border-bottom: 0;
-}
-
-.catalog-info {
-  min-width: 0;
-}
-
-.catalog-info strong {
-  display: block;
-  font-size: 0.94rem;
-}
-
-.catalog-info small {
-  color: var(--text-dim);
-  font-size: 0.8rem;
-}
-
-.catalog-info .ok {
-  color: var(--accent-fg);
+.catalog-row .list-text {
+  grid-column: 1;
 }
 
 .catalog-actions {
   grid-column: 2;
   grid-row: 1;
+  display: flex;
+  gap: 8px;
 }
 
-/* El boton no encoge cuando el nombre del pais es largo. */
-.catalog-actions button {
-  white-space: nowrap;
-}
-
-
-/* La barra y el aviso ocupan las dos columnas, bajo el nombre. */
 .catalog-progress,
 .catalog-problem {
   grid-column: 1 / -1;
@@ -735,34 +1947,35 @@ details summary {
   margin-top: 6px;
 }
 
-.catalog-progress .bar {
+.catalog-progress .bar,
+.bar {
   height: 6px;
   border-radius: 3px;
-  background: var(--surface-2);
+  background: var(--bg-2);
   overflow: hidden;
 }
 
-.catalog-progress .bar span {
+.bar span {
   display: block;
   height: 100%;
-  background: var(--accent);
-  transition: width 0.2s ease-out;
+  background: var(--brand-fg);
+  transition: width 0.3s var(--ease);
 }
 
 .catalog-progress small {
   display: block;
   margin-top: 4px;
-  color: var(--text-dim);
-  font-size: 0.78rem;
+  color: var(--ink-2);
+  font-size: 0.75rem;
 }
 
 .catalog-problem {
   margin-top: 8px;
   padding: 9px 11px;
   border-radius: 8px;
-  background: var(--surface-2);
+  background: var(--bg-2);
   border-left: 3px solid var(--danger);
-  font-size: 0.82rem;
+  font-size: 0.81rem;
 }
 
 .catalog-problem strong {
@@ -771,23 +1984,306 @@ details summary {
 }
 
 .catalog-problem span {
-  color: var(--text-dim);
+  color: var(--ink-2);
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .catalog-progress .bar span {
-    transition: none;
-  }
+/* ===========================================================================
+   Cosmetica
+   =========================================================================== */
+
+.explain {
+  margin-top: 14px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: var(--bg-1);
+  font-size: 0.84rem;
+  line-height: 1.5;
 }
 
-/* Coste de una actualizacion pendiente, en la fila del catalogo. */
-.catalog-info .pendiente {
-  color: var(--accent-fg);
+.sev-counts {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.sev-count {
+  padding: 10px 8px;
+  border-radius: var(--radius-control);
+  border: 1px solid var(--border);
+  background: var(--bg-1);
+  text-align: center;
+}
+
+.sev-n {
+  font: 800 1.25rem var(--font-display);
+}
+
+.sev-n.sev-prohibited { color: var(--danger-fg); }
+.sev-n.sev-restricted { color: var(--warning); }
+
+.sev-l {
+  font-size: 0.66rem;
+  color: var(--ink-2);
+}
+
+.flag-list {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-tile);
+  background: var(--bg-1);
+  overflow: hidden;
+}
+
+.flag {
+  padding: 12px 14px;
+}
+
+.flag + .flag {
+  border-top: 1px solid var(--border);
+}
+
+.flag-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.flag-head strong {
+  flex: 1;
+  min-width: 0;
+}
+
+.flag p {
+  margin: 5px 0 0;
+  font-size: 0.84rem;
+  line-height: 1.5;
+}
+
+.flag-ref {
+  color: var(--ink-2);
+  font-size: 0.75rem;
+}
+
+/* ===========================================================================
+   Hojas, toast, teclado
+   =========================================================================== */
+
+.scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  background: rgb(0 0 0 / 50%);
+  backdrop-filter: blur(4px);
+  animation: vk-rise 0.15s ease-out;
+}
+
+/* Las hojas suben desde abajo y dejan el contenido en la zona del pulgar. */
+.sheet {
+  position: fixed;
+  inset: auto 8px calc(8px + env(safe-area-inset-bottom));
+  z-index: 41;
+  max-height: 88vh;
+  overflow: auto;
+  padding: 16px 16px 28px;
+  border-radius: var(--radius-sheet);
+  border: 1px solid var(--border);
+  background: var(--bg-2);
+  box-shadow: var(--shadow-sheet);
+  animation: vk-rise 0.22s var(--ease);
+}
+
+.sheet h2 {
+  margin: 0 0 10px;
+  font-size: 1.06rem;
+  font-weight: 700;
+}
+
+.sheet-grip {
+  width: 36px;
+  height: 4px;
+  margin: 0 auto 14px;
+  border-radius: 2px;
+  background: var(--border-strong);
+}
+
+.sheet-body {
+  margin: 0 0 16px;
+  font-size: 0.84rem;
+  color: var(--ink-2);
+}
+
+.sheet button + button {
+  margin-top: 8px;
+}
+
+.manual-display {
+  display: flex;
+  align-items: center;
+  min-height: 56px;
+  padding: 0 14px;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: var(--bg-1);
+  font: 1.5rem/1 var(--font-num);
+  letter-spacing: 0.08em;
+  color: var(--ink);
+}
+
+.manual-display.bad {
+  border-color: var(--danger-fg);
+}
+
+.manual-display .ph {
+  color: var(--border-strong);
+}
+
+.manual-hint {
+  min-height: 20px;
+  margin: 6px 2px 10px;
+  font-size: 0.78rem;
+  color: var(--ink-2);
+}
+
+/* Teclado propio: el del sistema tapa media pantalla y ofrece letras que aqui
+   no valen. */
+.keypad {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.key {
+  min-height: 52px;
+  border: 0;
+  border-radius: var(--radius-control);
+  background: var(--bg-3);
+  color: var(--ink);
+  font: 600 1.38rem var(--font);
+  cursor: pointer;
+}
+
+.key.fn {
+  background: var(--bg-1);
+  font-size: 1.13rem;
+}
+
+.sheet .primary {
+  margin-top: 10px;
+}
+
+.add-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.add-head .mono {
+  font-size: 0.81rem;
+  color: var(--ink-2);
+}
+
+.sheet .add-classes {
+  font-size: 0.81rem;
+  color: var(--ink-2);
+}
+
+.add-desc {
+  margin: 12px 0 0;
+  font-size: 0.88rem;
+  line-height: 1.55;
+}
+
+.add-what {
+  margin-top: 12px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: var(--bg-1);
+  font-size: 0.84rem;
+  line-height: 1.5;
+}
+
+.add-groups {
+  margin: 8px 0 0;
+  font-size: 0.84rem;
+  line-height: 1.5;
+}
+
+.add-foot {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-top: 14px;
+  font-size: 0.81rem;
+  color: var(--ink-2);
+}
+
+.add-foot strong {
+  color: var(--ink);
+}
+
+.add-foot a {
+  color: var(--brand-fg);
   font-weight: 600;
 }
 
-/* Dos botones en la misma fila cuando hay actualizacion pendiente. */
-.catalog-actions {
+.toast {
+  position: fixed;
+  inset: auto var(--gutter) calc(96px + env(safe-area-inset-bottom));
+  z-index: 50;
   display: flex;
-  gap: 8px;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px solid var(--border-strong);
+  background: color-mix(in srgb, var(--bg-3) 95%, transparent);
+  backdrop-filter: blur(12px);
+  box-shadow: var(--shadow-float);
+  font-size: 0.84rem;
+  animation: vk-rise var(--dur) ease-out;
+}
+
+.toast span {
+  flex: 1;
+}
+
+.toast button {
+  min-height: 36px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 10px;
+  background: var(--ink);
+  color: var(--bg-0);
+  font: 700 0.81rem var(--font);
+  cursor: pointer;
+}
+
+/* Formulario de contribucion ----------------------------------------------- */
+
+.form label {
+  display: block;
+  margin: 12px 0 5px;
+  font-size: 0.81rem;
+  font-weight: 600;
+  color: var(--ink-2);
+}
+
+.form :is(input, textarea) {
+  width: 100%;
+  min-height: 48px;
+  padding: 12px;
+  border-radius: var(--radius-control);
+  border: 1px solid var(--border);
+  background: var(--bg-1);
+  color: var(--ink);
+  font: 16px var(--font);
+}
+
+.form .row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
 }

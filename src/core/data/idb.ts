@@ -121,6 +121,25 @@ export async function clearHistory(): Promise<void> {
   await db.history.clear();
 }
 
+/**
+ * Vacia los recientes CONSERVANDO los favoritos, y devuelve lo borrado.
+ *
+ * Devolverlo es lo que hace posible el «Deshacer»: borrar el historial es
+ * irreversible y sin una salida a mano el usuario tiene que acertar a la
+ * primera. Con esto, la confirmacion puede ser ligera en vez de una advertencia
+ * que nadie lee.
+ */
+export async function clearRecent(): Promise<HistoryEntry[]> {
+  const borrados = await db.history.filter((h) => !h.starred).toArray();
+  await db.history.bulkDelete(borrados.map((h) => h.id!).filter((id) => id !== undefined));
+  return borrados;
+}
+
+/** Devuelve al historial lo que se acaba de borrar. */
+export async function restoreHistory(entries: HistoryEntry[]): Promise<void> {
+  if (entries.length) await db.history.bulkPut(entries);
+}
+
 export async function queueContribution(
   barcode: string,
   payload: Contribution['payload'],

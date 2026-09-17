@@ -104,6 +104,10 @@ function assessConfidence(product: Product, hasNova: boolean): Confidence {
   else if (ratio >= 0.35) level = 'low';
   else level = 'insufficient';
 
+  // Con algo sin contar no se puede decir "confianza alta": el numero es
+  // correcto pero incompleto, y esas notas son justo lo que lo acota.
+  if (level === 'high' && notes.length > 0) level = 'medium';
+
   return { level, ratio: Math.round(ratio * 100) / 100, missing, notes };
 }
 
@@ -115,7 +119,51 @@ function bandFor(value: number): HealthScore['band'] {
   return 'bad';
 }
 
+/**
+ * Sustituye lo que no se sabe por su valor mas -- o menos -- favorable.
+ *
+ * Sirve para acotar la nota cuando faltan datos. No se inventa nada: se dice
+ * "entre 86 y 92" en vez de fingir un 89 exacto.
+ */
+function withUnknownsAt(product: Product, side: 'best' | 'worst'): Product {
+  const n = product.nutriments;
+  const mejor = side === 'best';
+  return {
+    ...product,
+    nutriments: {
+      ...n,
+      // Ambos suman puntos positivos en Nutri-Score y hoy se cuentan como 0,
+      // asi que solo pueden mejorar la nota, nunca empeorarla.
+      fruitsVegetablesLegumes: n.fruitsVegetablesLegumes ?? (mejor ? 100 : 0),
+      fiber: n.fiber ?? (mejor ? 100 : 0),
+    },
+    // Sin NOVA se aplica un valor neutro, que puede quedarse corto en los dos
+    // sentidos: el producto podria ser un alimento sin procesar o un
+    // ultraprocesado. El rango tiene que cubrir ambos.
+    novaGroup: product.novaGroup ?? (mejor ? 1 : 4),
+  };
+}
+
+/**
+ * Calcula la nota y, cuando faltan datos, hasta donde podria llegar.
+ *
+ * El rango no es decorativo: es la unica forma honesta de mostrar un numero
+ * cuando la base no tiene todo lo que el algoritmo necesita. Un 89 a secas
+ * afirma una precision que no existe.
+ */
 export function scoreProduct(product: Product, ctx: ScoringContext): HealthScore {
+  const score = scoreOnce(product, ctx);
+  // Se calcula siempre: si no falta nada, los tres calculos coinciden y no hay
+  // rango que mostrar. Fiarse del nivel de confianza no bastaba, porque el
+  // porcentaje de frutas y verduras no entra en su ponderacion y sin embargo
+  // puede mover la nota hasta 5 puntos de Nutri-Score.
+  const min = scoreOnce(withUnknownsAt(product, 'worst'), ctx).value;
+  const max = scoreOnce(withUnknownsAt(product, 'best'), ctx).value;
+  // Si acotar no cambia nada, no se muestra un rango que no aporta.
+  return min === max ? score : { ...score, range: { min: Math.min(min, score.value), max: Math.max(max, score.value) } };
+}
+
+function scoreOnce(product: Product, ctx: ScoringContext): HealthScore {
   const breakdown: ScoreBreakdownItem[] = [];
 
   // --- 1. Calidad nutricional (Nutri-Score 2023) ---

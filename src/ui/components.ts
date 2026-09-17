@@ -14,12 +14,8 @@ import type {
   PahoResult,
   Product,
 } from '../core/types.js';
-import { BAND_COLORS, BAND_LABELS } from '../core/scoring/engine.js';
-import {
-  ADDITIVE_CLASS_LABELS,
-  POPULATION_GROUP_LABELS,
-  describeRisk,
-} from '../core/scoring/additives.js';
+import { BAND_LABELS } from '../core/scoring/engine.js';
+import { ADDITIVE_CLASS_LABELS, POPULATION_GROUP_LABELS } from '../core/scoring/additives.js';
 import { PAHO_SEAL_LABELS } from '../core/scoring/paho.js';
 import { NOVA_DESCRIPTIONS } from '../core/scoring/nova.js';
 
@@ -59,426 +55,694 @@ const COMPONENT_LABELS: Record<string, string> = {
 };
 
 const CONFIDENCE_LABELS: Record<Confidence['level'], string> = {
-  high: 'Datos completos',
-  medium: 'Datos suficientes',
-  low: 'Datos incompletos',
+  high: 'Confianza alta',
+  medium: 'Confianza media',
+  low: 'Confianza baja',
   insufficient: 'Datos insuficientes',
 };
 
-const SOURCE_LABELS: Record<Product['source'], string> = {
-  cache: 'guardado en este dispositivo',
-  snapshot: 'copia local de la base',
-  openfoodfacts: 'Open Food Facts',
-  openbeautyfacts: 'Open Beauty Facts',
-  user: 'aportado por ti',
+/** Cuantas de las tres barras se encienden. Nunca es solo color: hay texto. */
+const CONFIDENCE_BARS: Record<Confidence['level'], number> = {
+  high: 3,
+  medium: 2,
+  low: 1,
+  insufficient: 0,
 };
 
+/**
+ * Como se nombra cada origen dentro de la frase «Datos de ...».
+ *
+ * No todas encajan igual: «Datos de guardado en este dispositivo» no es
+ * castellano, asi que las que no son un nombre propio llevan su propia
+ * redaccion.
+ */
+const SOURCE_SENTENCE: Record<Product['source'], string> = {
+  cache: 'Datos <strong>guardados en este dispositivo</strong>',
+  snapshot: 'Datos del <strong>catálogo descargado</strong>, de Open Food Facts',
+  openfoodfacts: 'Datos de <strong>Open Food Facts</strong>',
+  openbeautyfacts: 'Datos de <strong>Open Beauty Facts</strong>',
+  user: 'Datos <strong>aportados por ti</strong>',
+};
+
+
+// ---------------------------------------------------------------------------
+// Capa 1 · Veredicto
+// ---------------------------------------------------------------------------
+
+/**
+ * Anillo de puntuacion.
+ *
+ * Dos arcos, no uno. El exterior translucido marca el RANGO en el que puede
+ * estar la nota cuando faltan datos; el interior, la nota calculada. Sin el,
+ * un 76 con el 15% de los datos ausentes se veria igual que un 76 completo, y
+ * eso seria fingir una precision que no se tiene.
+ *
+ * El numero lleva «≈» delante en ese caso: el color por si solo no comunica
+ * nada a quien no lo distingue.
+ */
 export function scoreDial(score: HealthScore): SafeHtml {
-  const color = BAND_COLORS[score.band];
-  const r = 46;
-  const circumference = 2 * Math.PI * r;
-  const filled = (score.value / 100) * circumference;
+  const { value, band, range } = score;
+  const incierto = Boolean(range);
+  const rangoTexto = range ? `, entre ${range.min} y ${range.max}` : '';
+  const aria = `Puntuación ${value} sobre 100, ${BAND_LABELS[band]}${rangoTexto}`;
+
+  const anchoRango = range ? range.max - range.min : 0;
 
   return html`
-    <div class="score-dial" role="img" aria-label="Puntuación ${score.value} sobre 100">
-      <svg viewBox="0 0 104 104" aria-hidden="true">
-        <circle cx="52" cy="52" r="${r}" fill="none" stroke="var(--border)" stroke-width="8" />
+    <div class="dial band-${band}" role="img" aria-label="${aria}">
+      <svg viewBox="0 0 124 124" aria-hidden="true">
+        <circle class="dial-track" cx="62" cy="62" r="54" pathLength="100" />
+        ${range
+          ? html`<circle
+              class="dial-range"
+              cx="62"
+              cy="62"
+              r="54"
+              pathLength="100"
+              stroke-dasharray="${anchoRango} ${100 - anchoRango}"
+              stroke-dashoffset="${-range.min}"
+            />`
+          : raw('')}
         <circle
-          cx="52" cy="52" r="${r}" fill="none"
-          stroke="${raw(color)}" stroke-width="8" stroke-linecap="round"
-          stroke-dasharray="${filled} ${circumference - filled}"
+          class="dial-value"
+          cx="62"
+          cy="62"
+          r="54"
+          pathLength="100"
+          stroke-dasharray="${value} ${100 - value}"
         />
       </svg>
-      <div>
-        <div class="value" style="color:${raw(color)}">${score.value}</div>
-        <div class="max">de 100</div>
+      <div class="dial-inner">
+        <div class="dial-score">${incierto ? raw('<span aria-hidden="true">≈</span>') : raw('')}${value}</div>
+        <div class="dial-of">DE 100</div>
       </div>
     </div>
   `;
 }
 
-export function confidenceBar(confidence: Confidence): SafeHtml {
+/** Cabecera del veredicto: nota, banda, nombre y marca. */
+export function verdict(product: Product, score: HealthScore): SafeHtml {
+  const marca = product.brands?.join(', ');
+  const sub = [marca, product.quantity].filter(Boolean).join(' · ');
   return html`
-    <div class="confidence ${confidence.level}">
-      <strong>${CONFIDENCE_LABELS[confidence.level]}</strong>
-      <div class="bar"><span style="width:${Math.round(confidence.ratio * 100)}%"></span></div>
-      ${confidence.missing.length > 0
-        ? html`<div>Falta: ${confidence.missing.join(', ')}.</div>`
-        : ''}
-      ${confidence.notes.map((n) => html`<div>${n}</div>`)}
-    </div>
+    <section class="verdict" aria-label="Veredicto">
+      ${scoreDial(score)}
+      <div class="verdict-text">
+        <span class="band-pill band-${score.band}">${BAND_LABELS[score.band]}</span>
+        <h2>${product.name ?? 'Producto sin nombre'}</h2>
+        ${sub ? html`<div class="verdict-sub">${sub}</div>` : raw('')}
+      </div>
+    </section>
   `;
 }
 
-export function nutriscoreCard(ns: NutriscoreResult): SafeHtml {
-  const letters = ['a', 'b', 'c', 'd', 'e'];
+/**
+ * Fila de certeza, plegable.
+ *
+ * Va inmediatamente bajo la nota y no enterrada al final: si el numero lleva
+ * un «≈», el usuario tiene que poder saber por que sin buscarlo.
+ */
+export function confidenceRow(score: HealthScore, open: boolean): SafeHtml {
+  const c = score.confidence;
+  const encendidas = CONFIDENCE_BARS[c.level];
+  const corto = c.missing.length
+    ? `falta ${c.missing.slice(0, 2).join(' y ')}`
+    : c.notes.length
+      ? c.notes[0]!.replace(/^No consta (el |la )?/, 'falta ').replace(/[:.].*$/, '')
+      : 'todos los datos que necesita el algoritmo';
+
+  const largo = [
+    score.range
+      ? `La nota real estaría entre ${score.range.min} y ${score.range.max}.`
+      : '',
+    ...c.notes,
+  ]
+    .filter(Boolean)
+    .join(' ');
+
   return html`
-    <div class="card">
-      <h2>Calidad nutricional · Nutri-Score 2023</h2>
-      <div class="nutriscore-scale">
-        ${letters.map(
-          (l) => html`<span
-            style="background:${raw(NUTRISCORE_COLORS[l] ?? '#888')};color:${raw(
-              NUTRISCORE_TEXT[l] ?? '#111111',
-            )}"
-            data-active="${l === ns.grade}"
-            >${l.toUpperCase()}</span
-          >`,
+    <button
+      class="confidence conf-${c.level}"
+      data-action="toggle-confidence"
+      aria-expanded="${open}"
+      aria-controls="confidence-detail"
+    >
+      <span class="conf-bars" aria-hidden="true">
+        ${[1, 2, 3].map(
+          (n) => html`<span class="${n <= encendidas ? 'on' : ''}"></span>`,
         )}
-      </div>
-      <details style="margin-top:12px">
-        <summary>Cómo se ha calculado (${ns.score} puntos)</summary>
-        <table class="nutrient-table" style="margin-top:8px">
-          <tbody>
-            <tr>
-              <td colspan="2"><strong>Penalizan (${ns.negativePoints} pts)</strong></td>
-            </tr>
-            ${ns.components.negative.map(
-              (c) => html`<tr>
-                <td>${COMPONENT_LABELS[c.id] ?? c.id}${c.value !== undefined
-                  ? html` <span style="color:var(--text-dim)">${c.value} ${c.unit}</span>`
-                  : ''}</td>
-                <td>${c.points} / ${c.pointsMax}</td>
-              </tr>`,
-            )}
-            <tr>
-              <td colspan="2" style="padding-top:12px">
-                <strong>Compensan (${ns.positivePoints} pts)</strong>
-              </td>
-            </tr>
-            ${ns.components.positive.map(
-              (c) => html`<tr>
-                <td>${COMPONENT_LABELS[c.id] ?? c.id}${c.value !== undefined
-                  ? html` <span style="color:var(--text-dim)">${c.value} ${c.unit}</span>`
-                  : ''}</td>
-                <td>${c.points} / ${c.pointsMax}</td>
-              </tr>`,
-            )}
-          </tbody>
-        </table>
-        ${!ns.countProteins
-          ? html`<p class="source-note">
-              Las proteínas no suman en este producto:
-              ${ns.countProteinsReason === 'negative_points_greater_than_or_equal_to_11'
-                ? 'acumula 11 o más puntos negativos, y la regla de 2023 impide compensarlos con proteína.'
-                : 'acumula 7 o más puntos negativos en la categoría de grasas y aceites.'}
-            </p>`
-          : ''}
-        ${ns.proteinsLimitedReason === 'red_meat_product'
-          ? html`<p class="source-note">
-              Al ser carne roja, los puntos por proteína se limitan a 2 (revisión de 2023).
-            </p>`
-          : ''}
-      </details>
-    </div>
+      </span>
+      <span class="conf-text"><strong>${CONFIDENCE_LABELS[c.level]}</strong> · ${corto}</span>
+      <span class="chevron ${open ? 'open' : ''}" aria-hidden="true">▾</span>
+    </button>
+    ${open
+      ? html`<div class="confidence-detail" id="confidence-detail">
+          ${largo || 'Todos los datos que necesita el algoritmo están declarados y registrados.'}
+        </div>`
+      : raw('')}
   `;
 }
 
-export function pahoCard(paho: PahoResult): SafeHtml {
-  if (!paho.applicable) return raw('');
-  const exceeded = paho.seals.filter((s) => s.exceeded);
-  if (exceeded.length === 0) {
-    return html`
-      <div class="card">
-        <h2>Advertencias OPS/OMS</h2>
-        <p style="margin:0">
-          Sin sellos de exceso según el modelo de perfil de nutrientes de la OPS.
-        </p>
-      </div>
-    `;
+// ---------------------------------------------------------------------------
+// Capa 2 · Razones (bento)
+// ---------------------------------------------------------------------------
+
+/** Lo que se ve en grande dentro de cada bloque: el hecho, no el porcentaje. */
+function blockFact(id: string, score: HealthScore): { fact: string; sub: string; grade?: string } {
+  if (id === 'nutrition' && score.nutriscore) {
+    const ns = score.nutriscore;
+    return {
+      fact: `${ns.score > 0 ? '+' : ''}${ns.score} pts`,
+      sub: `Nutri-Score 2023 · ${ns.negativePoints} negativos − ${ns.positivePoints} positivos`,
+      grade: ns.grade.toUpperCase(),
+    };
   }
+  if (id === 'processing') {
+    return score.nova
+      ? { fact: `NOVA ${score.nova.group}`, sub: score.nova.label }
+      : { fact: 'Sin dato', sub: 'Se aplica un valor neutro, ni premia ni castiga' };
+  }
+  if (id === 'additives') {
+    const n = score.additives.length;
+    const riesgo = score.additives.filter((a) => a.risk === 'high' || a.risk === 'moderate').length;
+    return {
+      fact: String(n),
+      sub: n === 0 ? 'Ninguno declarado' : riesgo ? `${riesgo} con riesgo de sobreexposición` : 'Ninguno con riesgo',
+    };
+  }
+  const p = score.paho;
+  if (!p?.applicable) return { fact: 'No aplica', sub: 'El modelo OPS cubre procesados y ultraprocesados' };
+  return p.exceededCount === 0
+    ? { fact: 'Sin sellos', sub: 'Ningún exceso según el perfil de nutrientes' }
+    : {
+        fact: `${p.exceededCount} ${p.exceededCount === 1 ? 'sello' : 'sellos'}`,
+        sub: p.seals.filter((s) => s.exceeded).map((s) => PAHO_SEAL_LABELS[s.id]).join(', '),
+      };
+}
+
+/**
+ * Los cuatro bloques, con el area proporcional al peso.
+ *
+ * Que el bloque nutricional ocupe el ancho entero y el de advertencias sea una
+ * franja baja no es estetica: es la unica forma de que la jerarquia visual
+ * coincida con la del algoritmo (55 · 20 · 20 · 5). Con cuatro tarjetas
+ * iguales, el usuario deduce que pesan lo mismo.
+ */
+export function reasonsBento(score: HealthScore): SafeHtml {
   return html`
-    <div class="card">
-      <h2>Advertencias OPS/OMS</h2>
-      <div class="seals">
-        ${exceeded.map((s) => html`<div class="seal">${PAHO_SEAL_LABELS[s.id]}</div>`)}
+    <section class="reasons" aria-labelledby="reasons-h">
+      <div class="section-head">
+        <h3 id="reasons-h">Por qué ${score.value}</h3>
+        <span class="mono">pesos 55 · 20 · 20 · 5</span>
       </div>
-      <table class="nutrient-table" style="margin-top:14px">
-        <tbody>
-          ${exceeded.map(
-            (s) => html`<tr>
-              <td>
-                ${PAHO_SEAL_LABELS[s.id]}${s.estimated
-                  ? html` <span style="color:var(--text-dim)">(estimado)</span>`
-                  : ''}
-              </td>
-              <td>
-                ${s.actual !== undefined ? html`${s.actual} ${s.unit}` : 'presente'}
-                <span style="color:var(--text-dim)">
-                  ≥ ${s.threshold}${s.unit === 'presencia' ? '' : ` ${s.unit}`}</span
-                >
-              </td>
-            </tr>`,
-          )}
-        </tbody>
-      </table>
-      <p class="source-note">
-        Criterios del Modelo de Perfil de Nutrientes de la OPS (2016), base de los sellos
-        octogonales de Chile, Perú, México y Uruguay.
-      </p>
-    </div>
+      <div class="bento">
+        ${score.breakdown.map((b) => {
+          // `weight` es la fraccion del algoritmo (0,55), y `contribution` ya
+          // viene multiplicada por ella. Para la interfaz hacen falta los dos
+          // en la misma escala: 28 de 55, no 28 de 0,55.
+          const tope = Math.round(b.weight * 100);
+          const puntos = Math.round(b.contribution);
+          const relleno = tope ? Math.max(0, Math.min(100, Math.round((puntos / tope) * 100))) : 0;
+          const { fact, sub, grade } = blockFact(b.id, score);
+          const ancho = b.id === 'nutrition' || b.id === 'regulatory' ? 'wide' : '';
+          const bajo = b.id === 'regulatory' ? 'short' : '';
+          const nivel = relleno >= 75 ? 'good' : relleno >= 40 ? 'mid' : 'bad';
+          return html`
+            <button class="tile ${ancho} ${bajo}" data-action="open-evidence" data-ev="${b.id}">
+              <span class="tile-head">
+                <span class="tile-label">${b.label}</span>
+                <span class="mono tile-pts">${puntos}<span class="of">/${tope}</span></span>
+              </span>
+              <span class="tile-body">
+                ${grade
+                  ? html`<span
+                      class="ns-badge"
+                      aria-label="Nutri-Score ${grade}"
+                      style="background:${NUTRISCORE_COLORS[grade.toLowerCase()]};color:${NUTRISCORE_TEXT[
+                        grade.toLowerCase()
+                      ]}"
+                      >${grade}</span
+                    >`
+                  : raw('')}
+                <span class="tile-facts">
+                  <span class="tile-fact">${fact}</span>
+                  <span class="tile-sub">${sub}</span>
+                </span>
+              </span>
+              <span class="tile-bar ${nivel}" aria-hidden="true"
+                ><span style="width:${relleno}%"></span
+              ></span>
+            </button>
+          `;
+        })}
+      </div>
+      ${sealsRow(score.paho)}
+    </section>
   `;
 }
 
-export function additivesCard(additives: AdditiveAssessment[]): SafeHtml {
-  if (additives.length === 0) {
-    return html`
-      <div class="card">
-        <h2>Aditivos</h2>
-        <p style="margin:0">No se han declarado aditivos en este producto.</p>
-      </div>
-    `;
-  }
-
+/**
+ * Sellos octogonales del modelo OPS.
+ *
+ * Se dibujan con la forma real del envase: es el unico lenguaje visual de esta
+ * pantalla que el usuario ya conoce de antes de abrir la aplicacion.
+ */
+function sealsRow(paho?: PahoResult): SafeHtml {
+  const excedidos = paho?.seals.filter((s) => s.exceeded) ?? [];
+  if (excedidos.length === 0) return raw('');
   return html`
-    <div class="card">
-      <h2>Aditivos (${additives.length})</h2>
-      ${additives.map((a) => {
-        const groups = a.overexposedGroupsMean.length ? a.overexposedGroupsMean : a.overexposedGroupsP95;
-        return html`
-          <div class="additive">
-            <div class="head">
-              <strong>${a.name}</strong>
-              <span class="risk-chip risk-${a.risk}">${describeRiskShort(a)}</span>
-              ${a.classes.map(
-                (c) =>
-                  html`<span style="font-size:.74rem;color:var(--text-dim)"
-                    >${ADDITIVE_CLASS_LABELS[c] ?? c.replace('en:', '')}</span
-                  >`,
-              )}
-            </div>
-            ${a.description ? html`<p style="margin:5px 0;font-size:.85rem">${a.description}</p>` : ''}
-            <p style="margin:4px 0 0;font-size:.83rem;color:var(--text-dim)">
-              ${describeRisk(a.risk)}${groups.length > 0
-                ? html`. Supera la ingesta diaria admisible en:
-                  ${groups.map((g) => POPULATION_GROUP_LABELS[g] ?? g.replace('en:', '')).join(', ')}`
-                : ''}${a.ansesOfInterest ? '. Bajo vigilancia reforzada de ANSES' : ''}.
-            </p>
-            ${a.efsaEvaluationUrl
-              ? html`<p style="margin:4px 0 0">
-                  <a
-                    href="${a.efsaEvaluationUrl}"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    style="font-size:.78rem"
-                    >Evaluación de EFSA${a.efsaEvaluationDate ? ` (${a.efsaEvaluationDate})` : ''}</a
-                  >
-                </p>`
-              : ''}
-          </div>
-        `;
-      })}
-      <p class="source-note">
-        Se valora el <strong>riesgo de sobreexposición evaluado por EFSA</strong>, no el peligro
-        teórico del aditivo. El programa de reevaluación de EFSA sigue en curso: la mayoría de los
-        aditivos aún no tiene una evaluación de sobreexposición publicada, y en esos casos la
-        penalización aplicada es mínima.
-      </p>
-    </div>
-  `;
-}
-
-function describeRiskShort(a: AdditiveAssessment): string {
-  switch (a.risk) {
-    case 'high':
-      return 'riesgo alto';
-    case 'moderate':
-      return 'riesgo moderado';
-    case 'none':
-      return 'sin riesgo';
-    default:
-      return 'sin evaluar';
-  }
-}
-
-export function breakdownCard(score: HealthScore): SafeHtml {
-  return html`
-    <div class="card">
-      <h2>De dónde sale la puntuación</h2>
-      ${score.breakdown.map(
-        (b) => html`
-          <div class="breakdown-row">
-            <div class="label">${b.label}</div>
-            <div class="points">
-              ${Math.round(b.contribution)} <span style="color:var(--text-dim)">/ ${Math.round(b.weight * 100)}</span>
-            </div>
-            <div class="detail">${b.detail}</div>
-          </div>
-        `,
+    <div class="seals" aria-label="Sellos de exceso del modelo OPS">
+      ${excedidos.map(
+        (s) => html`<div class="seal">${PAHO_SEAL_LABELS[s.id].toUpperCase()}</div>`,
       )}
-      <p class="source-note">
-        Algoritmo versión ${score.algorithmVersion}. Cada bloque y su peso están documentados y son
-        auditables; no hay ajustes ocultos.
-      </p>
     </div>
   `;
 }
 
-export function novaCard(score: HealthScore): SafeHtml {
-  if (!score.nova) return raw('');
+// ---------------------------------------------------------------------------
+// Capa 3 · Evidencia
+// ---------------------------------------------------------------------------
+
+/** Una seccion plegable de evidencia. Cerrada por defecto: es la capa 3. */
+function evidenceItem(
+  id: string,
+  title: string,
+  meta: string,
+  open: boolean,
+  body: SafeHtml,
+): SafeHtml {
   return html`
-    <div class="card">
-      <h2>Grado de procesamiento · NOVA ${score.nova.group}</h2>
-      <p style="margin:0 0 6px"><strong>${score.nova.label}</strong></p>
-      <p style="margin:0;font-size:.86rem;color:var(--text-dim)">
-        ${NOVA_DESCRIPTIONS[score.nova.group]}
-      </p>
+    <div class="ev" id="ev-${id}">
+      <button data-action="toggle-evidence" data-ev="${id}" aria-expanded="${open}">
+        <span class="ev-title">${title}</span>
+        ${meta ? html`<span class="ev-meta">${meta}</span>` : raw('')}
+        <span class="chevron ${open ? 'open' : ''}" aria-hidden="true">▾</span>
+      </button>
+      ${open ? html`<div class="ev-body">${body}</div>` : raw('')}
     </div>
   `;
 }
 
-export function nutrientsCard(product: Product): SafeHtml {
-  const n = product.nutriments;
-  const rows: Array<[string, number | undefined, string]> = [
-    ['Energía', n.energyKcal !== undefined ? Math.round(n.energyKcal) : undefined, 'kcal'],
-    ['Grasas', n.fat, 'g'],
-    ['  de las cuales saturadas', n.saturatedFat, 'g'],
-    ['Hidratos de carbono', n.carbohydrates, 'g'],
-    ['  de los cuales azúcares', n.sugars, 'g'],
-    ['Fibra', n.fiber, 'g'],
-    ['Proteínas', n.proteins, 'g'],
-    ['Sal', n.salt, 'g'],
-  ];
-  const present = rows.filter(([, v]) => v !== undefined);
-  if (present.length === 0) return raw('');
+const evRow = (k: string, v: string, tone = ''): SafeHtml =>
+  html`<div class="ev-row ${tone}"><span>${k}</span><span class="mono">${v}</span></div>`;
 
+/** Nutri-Score punto por punto, que es lo que hace auditable la nota. */
+function nutriscoreEvidence(ns: NutriscoreResult): SafeHtml {
+  const fila = (c: NutriscoreResult['components']['negative'][number], max: number) =>
+    evRow(
+      `${COMPONENT_LABELS[c.id] ?? c.id}${c.value !== undefined ? ` · ${formatNum(c.value)}${c.unit ?? ''}` : ''}`,
+      `${c.points} / ${max}`,
+    );
   return html`
-    <div class="card">
-      <h2>Información nutricional (por 100 g/ml)</h2>
-      <table class="nutrient-table">
-        <tbody>
-          ${present.map(
-            ([label, value, unit]) => html`<tr>
-              <td>${label}</td>
-              <td>${typeof value === 'number' ? value.toFixed(value < 10 ? 1 : 0) : ''} ${unit}</td>
-            </tr>`,
-          )}
-        </tbody>
-      </table>
-    </div>
+    <div class="ev-group">Penalizan</div>
+    ${ns.components.negative.map((c) => fila(c, c.pointsMax ?? 10))}
+    <div class="ev-group">Compensan</div>
+    ${ns.components.positive.map((c) => fila(c, c.pointsMax ?? 5))}
+    ${!ns.countProteins
+      ? html`<p class="ev-note">Las proteínas no cuentan: ${ns.countProteinsReason}</p>`
+      : raw('')}
+    ${ns.missingInputs.length
+      ? html`<p class="ev-note">
+          Se contaron como 0 por no constar: ${ns.missingInputs.join(', ')}.
+        </p>`
+      : raw('')}
+    <p class="ev-note">
+      Algoritmo 2023 portado de la implementación de referencia de Open Food Facts, con 923
+      aserciones contra productos reales.
+    </p>
   `;
 }
 
-export function ingredientsCard(product: Product): SafeHtml {
-  if (!product.ingredientsText) return raw('');
+function formatNum(v: number): string {
+  return new Intl.NumberFormat('es', { maximumFractionDigits: 2 }).format(v);
+}
+
+/**
+ * El matiz que separa a Veskan de las aplicaciones que puntuan aditivos: se
+ * mide el RIESGO de sobreexposicion real de la poblacion, no el PELIGRO
+ * teorico de la sustancia al margen de la dosis.
+ */
+const RISK_EXPLANATION: Record<AdditiveAssessment['risk'], string> = {
+  high: 'EFSA calcula si la exposición real de la población supera la ingesta diaria admisible (IDA). Aquí la supera incluso en consumo medio: penaliza de forma gradual, sin congelar la nota.',
+  moderate:
+    'EFSA calcula si la exposición real de la población supera la ingesta diaria admisible (IDA). Aquí la supera en el consumo alto de algunos grupos: penaliza de forma gradual, sin congelar la nota.',
+  low: 'EFSA ha evaluado la exposición y el margen es holgado. La penalización es mínima.',
+  none: 'EFSA ha evaluado la exposición y ningún grupo supera la ingesta diaria admisible. No penaliza.',
+  unknown:
+    'EFSA aún no ha publicado su reevaluación de sobreexposición para este aditivo. Se aplica la penalización mínima y se dice que no se sabe, en vez de suponerlo seguro.',
+};
+
+/**
+ * El numero E, con su prefijo.
+ *
+ * La taxonomia lo guarda sin la «E» (`133`) pero el nombre si la lleva
+ * (`E133 - Azul brillante FCF`), asi que mostrarlos juntos lo repetia.
+ */
+const eNumberOf = (a: AdditiveAssessment) => (a.eNumber ? `E${a.eNumber}` : '');
+
+/** El nombre sin el numero E delante, que ya va en su propia columna. */
+const additiveName = (a: AdditiveAssessment) =>
+  a.name.replace(/^E\d+[a-z]?\s*[-–—]\s*/i, '');
+
+const RISK_CHIP: Record<AdditiveAssessment['risk'], { label: string; glyph: string; cls: string }> = {
+  high: { label: 'Riesgo alto', glyph: '▲', cls: 'risk-high' },
+  moderate: { label: 'Riesgo moderado', glyph: '▲', cls: 'risk-moderate' },
+  low: { label: 'Riesgo bajo', glyph: '●', cls: 'risk-low' },
+  none: { label: 'Sin riesgo', glyph: '●', cls: 'risk-none' },
+  unknown: { label: 'Sin evaluar', glyph: '○', cls: 'risk-unknown' },
+};
+
+/** Lista de aditivos. Cada uno abre su hoja con la evaluacion completa. */
+function additivesEvidence(additives: AdditiveAssessment[]): SafeHtml {
+  if (additives.length === 0) {
+    return html`<p class="ev-text">No se han declarado aditivos en este producto.</p>`;
+  }
   return html`
-    <div class="card">
-      <h2>Ingredientes</h2>
-      <p style="margin:0;font-size:.89rem">${product.ingredientsText}</p>
-      ${product.allergenTags.length > 0
-        ? html`<p style="margin:10px 0 0;font-size:.85rem">
-            <strong>Alérgenos:</strong>
-            ${product.allergenTags.map((a) => a.replace(/^[a-z]{2}:/, '')).join(', ')}
-          </p>`
-        : ''}
-    </div>
+    ${additives.map((a) => {
+      const chip = RISK_CHIP[a.risk];
+      return html`
+        <button class="add-row" data-action="open-additive" data-tag="${a.tag}">
+          <span class="mono add-e">${eNumberOf(a)}</span>
+          <span class="add-name">${additiveName(a)}</span>
+          <span class="chip ${chip.cls}"><span aria-hidden="true">${chip.glyph}</span> ${chip.label}</span>
+          <span class="chevron-right" aria-hidden="true">›</span>
+        </button>
+      `;
+    })}
+    <p class="ev-note">
+      Se valora el riesgo de sobreexposición que evalúa EFSA, no el peligro teórico al margen de
+      la dosis. Toca cada aditivo para ver su evaluación.
+    </p>
   `;
 }
 
-export function cosmeticCard(assessment: CosmeticAssessment): SafeHtml {
-  const severityLabel = {
-    prohibited: 'Prohibido en la UE',
-    restricted: 'Uso restringido',
-    allergen: 'Alérgeno declarable',
-    info: 'Información',
-  } as const;
-  const severityClass = {
-    prohibited: 'risk-high',
-    restricted: 'risk-moderate',
-    allergen: 'risk-unknown',
-    info: 'risk-unknown',
-  } as const;
-
+/** Hoja de detalle de un aditivo. Es donde vive el matiz riesgo/peligro. */
+export function additiveSheet(a: AdditiveAssessment): SafeHtml {
+  const chip = RISK_CHIP[a.risk];
+  const grupos = [...new Set([...a.overexposedGroupsMean, ...a.overexposedGroupsP95])]
+    .map((g) => POPULATION_GROUP_LABELS[g] ?? g)
+    .join(', ');
   return html`
-    <div class="notice info">
-      Para cosmética no damos una puntuación de 0 a 100. Las puntuaciones de "peligro" habituales
-      en el sector ignoran la concentración, la vía de exposición y si el producto se enjuaga, así
-      que informamos de lo que sí es verificable: situación regulatoria y alérgenos declarados.
+    <div class="sheet-grip" aria-hidden="true"></div>
+    <div class="add-head">
+      <span class="mono">${eNumberOf(a)}</span>
+      <span class="chip ${chip.cls}"><span aria-hidden="true">${chip.glyph}</span> ${chip.label}</span>
     </div>
-    <div class="card">
-      <h2>Análisis de la fórmula</h2>
-      ${assessment.flags.length === 0
-        ? html`<p style="margin:0">
-            No se han detectado sustancias prohibidas, restringidas ni alérgenos de declaración
-            obligatoria entre los ${assessment.totalIngredients} ingredientes analizados.
-          </p>`
-        : assessment.flags.map(
-            (f) => html`
-              <div class="additive">
-                <div class="head">
-                  ${f.ingredient ? html`<strong>${f.ingredient}</strong>` : ''}
-                  <span class="risk-chip ${severityClass[f.severity]}">${severityLabel[f.severity]}</span>
-                </div>
-                <p style="margin:5px 0 0;font-size:.85rem">${f.message}</p>
-                ${f.reference
-                  ? html`<p style="margin:3px 0 0;font-size:.76rem;color:var(--text-dim)">
-                      ${f.reference}
-                    </p>`
-                  : ''}
-              </div>
-            `,
-          )}
+    <h2>${additiveName(a)}</h2>
+    <div class="add-classes">
+      ${a.classes.map((c) => ADDITIVE_CLASS_LABELS[c] ?? c).join(' · ') || 'Aditivo alimentario'}
     </div>
-    ${confidenceBar(assessment.confidence)}
-  `;
-}
-
-export function sourceNote(product: Product): SafeHtml {
-  const date = product.lastModified ? new Date(product.lastModified).toLocaleDateString('es') : null;
-  return html`
-    <p class="source-note">
-      Datos de <strong>${SOURCE_LABELS[product.source]}</strong>${date
-        ? html`, última actualización ${date}`
-        : ''}. Base de datos colaborativa bajo licencia ODbL: cualquiera puede corregirla.
-      ${product.editUrl
-        ? html`<a href="${product.editUrl}" target="_blank" rel="noopener noreferrer"
-            >¿Ves algo mal? Corrígelo aquí.</a
+    ${a.description ? html`<p class="add-desc">${a.description}</p>` : raw('')}
+    <div class="add-what"><strong>Qué mide esto.</strong> ${RISK_EXPLANATION[a.risk]}</div>
+    ${grupos
+      ? html`<p class="add-groups">
+          <strong>Supera la ingesta diaria admisible en:</strong> ${grupos}.
+        </p>`
+      : raw('')}
+    <div class="add-foot">
+      <span
+        >Penalización aplicada:
+        <strong class="mono">−${formatNum(Math.round(a.penalty * 10) / 10)} pts</strong></span
+      >
+      ${a.efsaEvaluationUrl
+        ? html`<a href="${a.efsaEvaluationUrl}" target="_blank" rel="noopener"
+            >Evaluación EFSA${a.efsaEvaluationDate ? ` (${a.efsaEvaluationDate})` : ''} ↗</a
           >`
-        : ''}
-    </p>
-    <p class="source-note">
-      Esta aplicación es informativa y no sustituye el consejo de un profesional sanitario.
+        : raw('')}
+    </div>
+  `;
+}
+
+/** Tabla nutricional por 100 g, tal cual la declara el envase. */
+function nutrientsEvidence(product: Product): SafeHtml {
+  const n = product.nutriments;
+  const filas: Array<[string, number | undefined, string]> = [
+    ['Energía', n.energyKcal, ' kcal'],
+    ['Grasas', n.fat, ' g'],
+    ['  de las cuales saturadas', n.saturatedFat, ' g'],
+    ['Hidratos de carbono', n.carbohydrates, ' g'],
+    ['  de los cuales azúcares', n.sugars, ' g'],
+    ['Fibra', n.fiber, ' g'],
+    ['Proteínas', n.proteins, ' g'],
+    ['Sal', n.salt, ' g'],
+  ];
+  const presentes = filas.filter(([, v]) => v !== undefined);
+  if (presentes.length === 0) {
+    return html`<p class="ev-text">Este producto no tiene tabla nutricional registrada.</p>`;
+  }
+  return html`${presentes.map(([k, v, u]) => evRow(k, `${formatNum(v!)}${u}`, 'plain'))}`;
+}
+
+/** El bloque de evidencia entero. `open` dice cuales estan desplegadas. */
+export function evidence(product: Product, score: HealthScore, open: Set<string>): SafeHtml {
+  const secciones: Array<[string, string, string, SafeHtml] | null> = [
+    score.nutriscore
+      ? [
+          'nutrition',
+          'Nutri-Score, punto por punto',
+          `${score.nutriscore.score > 0 ? '+' : ''}${score.nutriscore.score} · ${score.nutriscore.grade.toUpperCase()}`,
+          nutriscoreEvidence(score.nutriscore),
+        ]
+      : null,
+    [
+      'processing',
+      'Procesamiento · NOVA',
+      score.nova ? `NOVA ${score.nova.group}` : 'sin dato',
+      score.nova
+        ? html`<p class="ev-text">${NOVA_DESCRIPTIONS[score.nova.group]}</p>`
+        : html`<p class="ev-text">
+            Open Food Facts no ha podido determinar el grado de procesamiento, y tampoco se ha
+            podido inferir de los ingredientes. Se aplica un valor neutro: ni premia ni castiga.
+          </p>`,
+    ],
+    [
+      'additives',
+      'Aditivos',
+      score.additives.length ? String(score.additives.length) : 'ninguno',
+      additivesEvidence(score.additives),
+    ],
+    [
+      'regulatory',
+      'Advertencias OPS/OMS',
+      score.paho?.applicable
+        ? score.paho.exceededCount
+          ? `${score.paho.exceededCount} ${score.paho.exceededCount === 1 ? 'sello' : 'sellos'}`
+          : 'sin sellos'
+        : 'no aplica',
+      pahoEvidence(score.paho),
+    ],
+    ['nutrients', 'Tabla nutricional · 100 g', '', nutrientsEvidence(product)],
+    product.ingredientsText
+      ? [
+          'ingredients',
+          'Ingredientes y alérgenos',
+          '',
+          html`<p class="ev-text">${product.ingredientsText}</p>
+            <p class="ev-note">
+              Alérgenos:
+              ${product.allergenTags.length
+                ? product.allergenTags.map((t) => t.replace(/^[a-z]{2}:/, '')).join(', ')
+                : 'ninguno declarado'}.
+            </p>`,
+        ]
+      : null,
+  ];
+
+  return html`
+    <section class="evidence" aria-labelledby="evidence-h">
+      <h3 id="evidence-h">Evidencia</h3>
+      <div class="ev-list">
+        ${secciones
+          .filter((s): s is [string, string, string, SafeHtml] => s !== null)
+          .map(([id, t, m, body]) => evidenceItem(id, t, m, open.has(id), body))}
+      </div>
+      ${sourceNote(product)}
+      <p class="fineprint">
+        Algoritmo ${score.algorithmVersion}, publicado y verificable. Esta aplicación es
+        informativa y no sustituye el consejo de un profesional sanitario.
+      </p>
+    </section>
+  `;
+}
+
+function pahoEvidence(paho?: PahoResult): SafeHtml {
+  if (!paho?.applicable) {
+    return html`<p class="ev-text">
+      El modelo de perfil de nutrientes de la OPS solo se aplica a productos procesados y
+      ultraprocesados (NOVA 3 y 4). Este no lo es.
+    </p>`;
+  }
+  return html`
+    ${paho.seals.map((s) =>
+      evRow(
+        `${PAHO_SEAL_LABELS[s.id]}${s.actual !== undefined ? ` · ${formatNum(s.actual)}${s.unit}` : ''}`,
+        `${s.exceeded ? '≥' : '<'} ${formatNum(s.threshold)}${s.unit}`,
+        s.exceeded ? 'exceeded' : '',
+      ),
+    )}
+    ${paho.seals.some((s) => s.estimated)
+      ? html`<p class="ev-note">
+          Los azúcares libres se han estimado a partir de los azúcares totales: el envase no los
+          declara por separado.
+        </p>`
+      : raw('')}
+    <p class="ev-note">
+      Modelo base de los sellos octogonales de Chile, Perú, México y Uruguay.
     </p>
   `;
 }
 
-export function productHeader(product: Product, score?: HealthScore): SafeHtml {
+/** De donde salen los datos y como corregirlos. Va al pie de la evidencia. */
+export function sourceNote(product: Product): SafeHtml {
+  const fecha = product.lastModified
+    ? new Date(product.lastModified).toLocaleDateString('es')
+    : undefined;
   return html`
-    <div class="card">
-      <div class="score-hero">
-        ${score ? scoreDial(score) : raw('')}
-        <div class="score-meta">
-          <h3>${product.name ?? `Producto ${product.barcode}`}</h3>
-          ${product.brands?.length
-            ? html`<p class="brand">${product.brands.join(', ')}${product.quantity
-                ? ` · ${product.quantity}`
-                : ''}</p>`
-            : ''}
-          ${score
-            ? html`<span class="band" style="background:${raw(BAND_COLORS[score.band])}"
-                >${BAND_LABELS[score.band]}</span
-              >`
-            : ''}
+    <p class="fineprint">
+      ${raw(SOURCE_SENTENCE[product.source])}${fecha ? `, editados el ${fecha}` : ''}. Base
+      colaborativa bajo licencia ODbL.
+      ${product.editUrl
+        ? html`<a href="${product.editUrl}" target="_blank" rel="noopener"
+            >¿Ves algo mal? Corrígelo.</a
+          >`
+        : raw('')}
+    </p>
+  `;
+}
+
+// ---------------------------------------------------------------------------
+// Cosmetica: banderas, sin nota
+// ---------------------------------------------------------------------------
+
+const SEVERITY: Record<
+  CosmeticAssessment['flags'][number]['severity'],
+  { label: string; glyph: string; cls: string }
+> = {
+  prohibited: { label: 'Prohibido', glyph: '■', cls: 'sev-prohibited' },
+  restricted: { label: 'Restringido', glyph: '▲', cls: 'sev-restricted' },
+  allergen: { label: 'Alérgeno', glyph: '●', cls: 'sev-allergen' },
+  info: { label: 'Info', glyph: '○', cls: 'sev-info' },
+};
+
+/**
+ * Vista de cosmetica.
+ *
+ * El hueco donde iria la nota dice «SIN NOTA, a proposito» y se explica al
+ * lado. Dejarlo vacio pareceria un fallo de carga; poner un numero seria peor:
+ * una cifra tipo EWG confunde peligro con riesgo, ignora la dosis, la via de
+ * exposicion y si el producto se aclara.
+ */
+export function cosmeticView(product: Product, a: CosmeticAssessment): SafeHtml {
+  const marca = product.brands?.join(', ');
+  const sub = [marca, product.quantity].filter(Boolean).join(' · ');
+  const porSeveridad = (s: keyof typeof SEVERITY) => a.flags.filter((f) => f.severity === s).length;
+
+  return html`
+    <section class="verdict" aria-label="Producto de cosmética">
+      <div class="dial dial-none" role="img" aria-label="Sin puntuación: es un producto de cosmética">
+        <div class="dial-inner">
+          <div class="dial-nonum">SIN NOTA</div>
+          <div class="dial-of">a propósito</div>
         </div>
       </div>
-      ${score ? confidenceBar(score.confidence) : raw('')}
+      <div class="verdict-text">
+        <span class="band-pill band-neutral">Cosmética</span>
+        <h2>${product.name ?? 'Producto sin nombre'}</h2>
+        ${sub ? html`<div class="verdict-sub">${sub}</div>` : raw('')}
+      </div>
+    </section>
+
+    <div class="explain">
+      <strong>Por qué no hay número.</strong> Una cifra tipo EWG confunde peligro con riesgo:
+      ignora la dosis, la vía y si el producto se enjuaga. Mostramos lo verificable: situación
+      regulatoria (Reglamento CE 1223/2009) y alérgenos de declaración obligatoria.
     </div>
+
+    ${a.hasFullInciList
+      ? html`
+          <section class="reasons">
+            <div class="section-head">
+              <h3>Banderas de la fórmula</h3>
+              <span class="mono">${a.flags.length} de ${a.totalIngredients} ingredientes</span>
+            </div>
+            <div class="sev-counts">
+              ${(['prohibited', 'restricted', 'allergen', 'info'] as const).map(
+                (s) => html`
+                  <div class="sev-count">
+                    <div class="sev-n ${porSeveridad(s) ? SEVERITY[s].cls : ''}">${porSeveridad(s)}</div>
+                    <div class="sev-l">${SEVERITY[s].label}</div>
+                  </div>
+                `,
+              )}
+            </div>
+            ${a.flags.length
+              ? html`<div class="flag-list">
+                  ${a.flags.map(
+                    (f) => html`
+                      <div class="flag">
+                        <div class="flag-head">
+                          <strong>${f.ingredient}</strong>
+                          <span class="chip ${SEVERITY[f.severity].cls}"
+                            ><span aria-hidden="true">${SEVERITY[f.severity].glyph}</span>
+                            ${SEVERITY[f.severity].label}</span
+                          >
+                        </div>
+                        <p>${f.message}</p>
+                        ${f.reference ? html`<p class="flag-ref">${f.reference}</p>` : raw('')}
+                      </div>
+                    `,
+                  )}
+                </div>`
+              : html`<p class="ev-text">
+                  Ningún ingrediente de la fórmula está prohibido, restringido ni es un alérgeno de
+                  declaración obligatoria.
+                </p>`}
+            <div class="confidence conf-high" role="note">
+              <span class="conf-bars" aria-hidden="true"
+                ><span class="on"></span><span class="on"></span><span class="on"></span
+              ></span>
+              <span class="conf-text"
+                ><strong>Fórmula completa</strong> · ${a.recognizedIngredients}/${a.totalIngredients}
+                ingredientes INCI reconocidos</span
+              >
+            </div>
+          </section>
+        `
+      : html`
+          <section class="empty-block">
+            <span class="conf-bars warn" aria-hidden="true"
+              ><span class="on"></span><span></span><span></span
+            ></span>
+            <div class="empty-title">Fórmula no declarada</div>
+            <p>
+              No hay lista INCI en la base. Sin ella no podemos comprobar nada: eso es un problema
+              de transparencia del registro, no una nota negativa del producto.
+            </p>
+          </section>
+        `}
+    ${sourceNote(product)}
   `;
 }
 
-export function assessmentView(assessment: Assessment): SafeHtml {
+// ---------------------------------------------------------------------------
+// Composicion
+// ---------------------------------------------------------------------------
+
+export interface ResultUi {
+  /** Secciones de evidencia desplegadas */
+  evidenceOpen: Set<string>;
+  /** La fila de certeza esta abierta */
+  confidenceOpen: boolean;
+}
+
+/** Arma el resultado completo: veredicto, razones y evidencia, en ese orden. */
+export function assessmentView(assessment: Assessment, ui: ResultUi): SafeHtml {
   if (assessment.kind === 'cosmetic') {
-    return html`
-      ${productHeader(assessment.product)} ${cosmeticCard(assessment.assessment)}
-      ${ingredientsCard(assessment.product)} ${sourceNote(assessment.product)}
-    `;
+    return cosmeticView(assessment.product, assessment.assessment);
   }
   const { product, score } = assessment;
   return html`
-    ${productHeader(product, score)} ${breakdownCard(score)}
-    ${score.nutriscore ? nutriscoreCard(score.nutriscore) : raw('')}
-    ${score.paho ? pahoCard(score.paho) : raw('')} ${novaCard(score)}
-    ${additivesCard(score.additives)} ${nutrientsCard(product)} ${ingredientsCard(product)}
-    ${sourceNote(product)}
+    ${verdict(product, score)} ${confidenceRow(score, ui.confidenceOpen)}
+    ${reasonsBento(score)} ${evidence(product, score, ui.evidenceOpen)}
   `;
 }
