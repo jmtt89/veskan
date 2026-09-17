@@ -24,7 +24,12 @@ import type { Product } from '../types.js';
 import { invalidateCached } from './idb.js';
 import { snapshotPriority } from '../scanner/gs1.js';
 import { SqliteHttpSource } from './sqlite-http/client.js';
-import { COUNTRY_LABELS, type SnapshotIndex } from './sqlite-http/snapshot-index.js';
+import {
+  COUNTRY_LABELS,
+  partFor,
+  partsOf,
+  type SnapshotIndex,
+} from './sqlite-http/snapshot-index.js';
 import { fetchDelta, planSync, syncCost, type SyncPlan } from './sqlite-http/delta-sync.js';
 import {
   classifyEviction,
@@ -82,8 +87,14 @@ const STORAGE_KEY = 'veskan.catalogs';
 export class CatalogManager {
   private index?: SnapshotIndex;
   private readonly states = new Map<string, CatalogView>();
-  /** Fuentes abiertas: descargadas y las de rango que se hayan necesitado */
-  private readonly sources = new Map<string, SqliteHttpSource>();
+  /**
+   * Fuentes abiertas, por pais, EN ORDEN DE PARTE.
+   *
+   * Un catalogo puede ser varios SQLite: los de mas de 100 MB no caben en un
+   * archivo de GitHub y se parten por rango de codigo de barras. Cada parte es
+   * una base completa, con su propio indice de texto.
+   */
+  private readonly sources = new Map<string, SqliteHttpSource[]>();
   private downloaded: string[] = [];
   private suggested: string | undefined;
   private capabilities?: Capabilities;
@@ -205,18 +216,28 @@ export class CatalogManager {
     this.opts.onChange(country);
 
     try {
-      await this.sources.get(country)?.close();
-      const source = new SqliteHttpSource({
-        source: country,
-        url: `${this.opts.baseUrl}/${entry.file}`,
-        strategy: 'download',
-        onProgress: (p) => {
-          view.progress = p;
-          this.opts.onChange(country);
-        },
-      });
-      await source.init();
-      this.sources.set(country, source);
+      await this.closeSources(country);
+      const partes = partsOf(entry);
+      const abiertas: SqliteHttpSource[] = [];
+      // Las partes se bajan una tras otra, no a la vez: en paralelo el aviso de
+      // progreso saltaria hacia atras y adelante, y ademas se multiplicaria la
+      // memoria durante la escritura en disco.
+      let yaBajado = 0;
+      for (const [i, parte] of partes.entries()) {
+        const source = new SqliteHttpSource({
+          source: CatalogManager.sourceId(country, i, partes.length),
+          url: `${this.opts.baseUrl}/${parte.file}`,
+          strategy: 'download',
+          onProgress: (p) => {
+            view.progress = { loaded: yaBajado + p.loaded, total: entry.bytes };
+            this.opts.onChange(country);
+          },
+        });
+        await source.init();
+        abiertas.push(source);
+        yaBajado += parte.bytes;
+      }
+      this.sources.set(country, abiertas);
 
       view.state = 'ready';
       view.progress = undefined;
@@ -236,14 +257,23 @@ export class CatalogManager {
     this.opts.onChange(country);
   }
 
+  /** Cierra y olvida todas las partes de un pais. */
+  private async closeSources(country: string): Promise<void> {
+    for (const s of this.sources.get(country) ?? []) await s.close().catch(() => {});
+    this.sources.delete(country);
+  }
+
   async remove(country: string): Promise<void> {
     const view = this.states.get(country);
     if (!view) return;
-    await this.sources.get(country)?.close();
-    this.sources.delete(country);
+    const partes = this.index ? partsOf(this.index.countries[country]!) : [];
+    await this.closeSources(country);
     try {
       const { send } = await import('./sqlite-http/worker-pool.js');
-      await send({ type: 'remove', source: country });
+      // Se borra parte por parte: cada una es un archivo propio en el disco.
+      for (let i = 0; i < Math.max(1, partes.length); i++) {
+        await send({ type: 'remove', source: CatalogManager.sourceId(country, i, partes.length || 1) });
+      }
     } catch {
       /* si no se pudo borrar, el estado siguiente lo reflejara */
     }
@@ -284,7 +314,7 @@ export class CatalogManager {
     if (!view || !entry || view.state !== 'ready') return;
     const antes = view.update?.cost;
     try {
-      const plan = planSync(await this.sources.get(country)?.version(), entry);
+      const plan = await this.planFor(country, entry);
       const cost = syncCost(plan, entry);
       view.update = cost ? { plan, cost } : undefined;
     } catch {
@@ -292,6 +322,30 @@ export class CatalogManager {
       view.update = undefined;
     }
     if (view.update?.cost !== antes) this.opts.onChange(country);
+  }
+
+  /**
+   * Plan de actualizacion del catalogo entero, mirando parte por parte.
+   *
+   * Cada parte lleva su propia cadena de deltas: en una noche pueden cambiar
+   * productos de una y ninguno de otra. Pero la decision es del catalogo, no de
+   * la parte: si a UNA le falta un eslabon hay que bajarlo todo, porque las
+   * partes de un mismo catalogo tienen que estar en la misma version -- si no,
+   * un producto podria aparecer con datos de anteayer segun en que rango caiga.
+   */
+  private async planFor(country: string, entry: SnapshotIndex['countries'][string]): Promise<SyncPlan> {
+    const local = await this.sources.get(country)?.[0]?.version();
+    const partes = partsOf(entry);
+    const planes = partes.map((parte) =>
+      planSync(local, { ...entry, bytes: parte.bytes, deltas: parte.deltas }),
+    );
+
+    const completo = planes.find((p) => p.kind === 'full');
+    if (completo) return completo;
+    if (planes.every((p) => p.kind === 'up-to-date')) return { kind: 'up-to-date' };
+
+    const chain = planes.flatMap((p) => (p.kind === 'deltas' ? p.chain : []));
+    return { kind: 'deltas', chain, bytes: chain.reduce((t, d) => t + d.bytes, 0) };
   }
 
   /**
@@ -307,7 +361,7 @@ export class CatalogManager {
     const entry = this.index?.countries[country];
     if (!view || !entry || view.state !== 'ready') return;
 
-    const plan = view.update?.plan ?? planSync(await this.sources.get(country)?.version(), entry);
+    const plan = view.update?.plan ?? (await this.planFor(country, entry));
     if (plan.kind === 'up-to-date') {
       view.update = undefined;
       this.opts.onChange(country);
@@ -324,8 +378,8 @@ export class CatalogManager {
     this.opts.onChange(country);
 
     try {
-      const source = this.sources.get(country);
-      if (!source) throw new Error('El catálogo no está abierto');
+      const fuentes = this.sources.get(country) ?? [];
+      if (!fuentes.length) throw new Error('El catálogo no está abierto');
       let bajado = 0;
       for (const paso of plan.chain) {
         const delta = await fetchDelta(`${this.opts.baseUrl}/${paso.file}`);
@@ -335,7 +389,13 @@ export class CatalogManager {
         if (delta.header.country !== country || delta.header.from !== paso.from) {
           throw new Error('El delta descargado no corresponde a este catálogo');
         }
-        await source.applyDelta(delta);
+        // Cada delta dice a que parte pertenece. Aplicarlo a la equivocada
+        // metería productos fuera de su rango y el enrutado por codigo dejaria
+        // de encontrarlos.
+        const idx = (delta.header.part ?? 1) - 1;
+        const destino = fuentes[idx];
+        if (!destino) throw new Error('El delta es de una parte que no tenemos');
+        await destino.applyDelta(delta);
         // El cache de productos ya vistos es la PRIMERA capa que se consulta:
         // si no se invalida, el usuario no veria el cambio hasta 30 dias
         // despues, cuando caduque. Solo se borra lo que el delta toco.
@@ -377,14 +437,27 @@ export class CatalogManager {
    */
   async getProduct(barcode: string): Promise<{ product: Product; country: string } | undefined> {
     for (const country of snapshotPriority(barcode, this.downloaded)) {
-      const source = await this.sourceFor(country);
-      if (!source) continue;
-      try {
-        const product = await source.getProduct(barcode);
-        if (product) return { product, country };
-      } catch {
-        // Un catalogo que falla no debe impedir probar el siguiente.
-        continue;
+      const entry = this.index?.countries[country];
+      if (!entry) continue;
+      const fuentes = await this.sourcesFor(country);
+      if (!fuentes.length) continue;
+
+      // En un catalogo partido solo se consulta la parte que puede contenerlo.
+      // Preguntar a todas multiplicaria por tres las lecturas de disco -- o las
+      // peticiones por red, en el modo por rangos -- de cada escaneo.
+      const partes = partsOf(entry);
+      const parte = partFor(partes, barcode);
+      const indice = parte ? partes.indexOf(parte) : -1;
+      const candidatas = indice >= 0 && fuentes[indice] ? [fuentes[indice]] : fuentes;
+
+      for (const source of candidatas) {
+        try {
+          const product = await source.getProduct(barcode);
+          if (product) return { product, country };
+        } catch {
+          // Una parte que falla no debe impedir probar el resto.
+          continue;
+        }
       }
     }
     return undefined;
@@ -398,14 +471,18 @@ export class CatalogManager {
    * en un catalogo, que lo descargue.
    */
   async search(term: string, limit = 25): Promise<Product[]> {
+    // Aqui si hay que preguntar a TODAS las partes: un nombre puede estar en
+    // cualquier rango de codigos, y cada parte tiene su propio indice de texto.
     const resultados = await Promise.all(
-      this.downloaded.map(async (c) => {
-        try {
-          return await (await this.sourceFor(c))?.search(term, limit) ?? [];
-        } catch {
-          return [];
-        }
-      }),
+      this.downloaded.flatMap((c) =>
+        [...Array(1)].map(async () => {
+          const fuentes = await this.sourcesFor(c);
+          const porParte = await Promise.all(
+            fuentes.map((f) => f.search(term, limit).catch(() => [] as Product[])),
+          );
+          return porParte.flat();
+        }),
+      ),
     );
     const vistos = new Set<string>();
     const unidos: Product[] = [];
@@ -421,7 +498,7 @@ export class CatalogManager {
 
   /** Cierra todo. Para tests y para cambiar de indice. */
   async close(): Promise<void> {
-    await Promise.all([...this.sources.values()].map((s) => s.close()));
+    await Promise.all([...this.sources.values()].flat().map((s) => s.close()));
     this.sources.clear();
   }
 
@@ -429,39 +506,61 @@ export class CatalogManager {
   // Interno
   // -------------------------------------------------------------------------
 
-  /** Abre la fuente de un pais, creandola por rangos si no esta descargado. */
-  private async sourceFor(country: string): Promise<SqliteHttpSource | undefined> {
-    const existente = this.sources.get(country);
-    if (existente) return existente;
+  /**
+   * Nombre con el que el Worker conoce una parte.
+   *
+   * Tiene que ser unico: el Worker guarda una conexion por nombre, y dos partes
+   * del mismo pais compartiendo nombre se pisarian.
+   */
+  private static sourceId(country: string, i: number, total: number): string {
+    return total === 1 ? country : `${country}-${String(i + 1).padStart(2, '0')}`;
+  }
+
+  /** Abre las partes de un pais, por rangos si no esta descargado. */
+  private async sourcesFor(country: string): Promise<SqliteHttpSource[]> {
+    const existentes = this.sources.get(country);
+    if (existentes?.length) return existentes;
 
     const entry = this.index?.countries[country];
-    if (!entry) return undefined;
+    if (!entry) return [];
 
-    const source = new SqliteHttpSource({
-      source: country,
-      url: `${this.opts.baseUrl}/${entry.file}`,
-      strategy: 'range',
-    });
-    try {
-      await source.init();
-    } catch {
-      return undefined;
+    const partes = partsOf(entry);
+    const abiertas: SqliteHttpSource[] = [];
+    for (const [i, parte] of partes.entries()) {
+      const source = new SqliteHttpSource({
+        source: CatalogManager.sourceId(country, i, partes.length),
+        url: `${this.opts.baseUrl}/${parte.file}`,
+        strategy: 'range',
+      });
+      try {
+        await source.init();
+        abiertas.push(source);
+      } catch {
+        // Una parte que no abre no debe tumbar a las demas: el producto puede
+        // estar en otra.
+        continue;
+      }
     }
-    this.sources.set(country, source);
-    return source;
+    if (abiertas.length) this.sources.set(country, abiertas);
+    return abiertas;
   }
 
   private async openLocal(country: string): Promise<void> {
     const entry = this.index?.countries[country];
     if (!entry) return;
+    const partes = partsOf(entry);
     try {
-      const source = new SqliteHttpSource({
-        source: country,
-        url: `${this.opts.baseUrl}/${entry.file}`,
-        strategy: 'download',
-      });
-      await source.init();
-      this.sources.set(country, source);
+      const abiertas: SqliteHttpSource[] = [];
+      for (const [i, parte] of partes.entries()) {
+        const source = new SqliteHttpSource({
+          source: CatalogManager.sourceId(country, i, partes.length),
+          url: `${this.opts.baseUrl}/${parte.file}`,
+          strategy: 'download',
+        });
+        await source.init();
+        abiertas.push(source);
+      }
+      this.sources.set(country, abiertas);
     } catch (err) {
       const view = this.states.get(country);
       if (view) {

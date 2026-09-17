@@ -34,6 +34,8 @@ export interface DeltaDelete {
 export interface DeltaHeader {
   format: number;
   country: string;
+  /** Numero de parte, desde 1. Ausente en catalogos de un solo archivo. */
+  part?: number;
   from: string;
   to: string;
   upserts: number;

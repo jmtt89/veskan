@@ -29,8 +29,28 @@ export interface SnapshotDelta {
   deletes: number;
 }
 
-export interface SnapshotCountryEntry {
+/**
+ * Una parte de un catalogo partido.
+ *
+ * Cada parte es un SQLite COMPLETO y funcional, con su tabla de productos y su
+ * indice de texto. Lo unico que la distingue es que solo contiene los codigos
+ * de barras de su rango.
+ */
+export interface SnapshotPart {
   file: string;
+  /** Primer codigo del rango, incluido. `null` en la primera parte. */
+  from: string | null;
+  /** Primer codigo de la parte siguiente, excluido. `null` en la ultima. */
+  to: string | null;
+  products: number;
+  bytes: number;
+  /** Cadena de deltas de ESTA parte: cada una cambia por su cuenta */
+  deltas?: SnapshotDelta[];
+}
+
+export interface SnapshotCountryEntry {
+  /** Solo en catalogos de un unico archivo. Los partidos usan `parts`. */
+  file?: string;
   products: number;
   bytes: number;
   /**
@@ -40,6 +60,46 @@ export interface SnapshotCountryEntry {
   version?: string;
   /** Cadena de deltas disponibles, del mas viejo al mas nuevo */
   deltas?: SnapshotDelta[];
+  /**
+   * Partes del catalogo. Siempre hay al menos una.
+   *
+   * Un catalogo de mas de 100 MB no se puede publicar en GitHub, asi que se
+   * parte por rango de codigo de barras. El rango va en cada parte para que el
+   * cliente sepa en cual buscar sin abrirlas todas, que es la operacion de cada
+   * escaneo.
+   */
+  parts?: SnapshotPart[];
+}
+
+/**
+ * Partes de un catalogo, normalizando el caso de un solo archivo.
+ *
+ * Asi el resto del codigo tiene un unico camino en vez de dos.
+ */
+export function partsOf(entry: SnapshotCountryEntry): SnapshotPart[] {
+  if (entry.parts?.length) return entry.parts;
+  return [
+    {
+      file: entry.file ?? '',
+      from: null,
+      to: null,
+      products: entry.products,
+      bytes: entry.bytes,
+      deltas: entry.deltas,
+    },
+  ];
+}
+
+/**
+ * Parte que contiene un codigo de barras.
+ *
+ * La comparacion es de CADENAS, no de numeros, porque es asi como ordena e
+ * indexa SQLite: los cortes se calcularon con su mismo criterio. Convertir a
+ * numero o rellenar con ceros daria otro orden y el codigo caeria en la parte
+ * equivocada.
+ */
+export function partFor(parts: SnapshotPart[], barcode: string): SnapshotPart | undefined {
+  return parts.find((p) => (p.from === null || barcode >= p.from) && (p.to === null || barcode < p.to));
 }
 
 export interface SnapshotIndex {
