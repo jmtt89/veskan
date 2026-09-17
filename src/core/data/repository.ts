@@ -45,7 +45,10 @@ export class ProductNotFoundError extends Error {
 
 export interface RepositoryOptions {
   off: OffClient;
-  /** Snapshot estatico opcional. Sin el, la app funciona solo con L0 + L2. */
+  /**
+   * Snapshot estatico opcional. Sin el, la app funciona solo con L0 + L2.
+   * Mutable: se asigna cuando se sabe el pais y su estrategia.
+   */
   snapshot?: SqliteHttpSource;
   scoringContext: () => Promise<ScoringContext>;
 }
@@ -61,6 +64,21 @@ export interface LookupOptions {
 
 export class ProductRepository {
   constructor(private readonly opts: RepositoryOptions) {}
+
+  /**
+   * Fija o cambia la fuente del snapshot ya en marcha.
+   *
+   * Hace falta porque la estrategia (descargar entero o consultar por rangos) y
+   * la URL dependen del pais y del tamano publicado en el indice, que se lee
+   * despues de arrancar. Y porque el usuario puede cambiar de pais sin recargar.
+   */
+  setSnapshot(source: SqliteHttpSource | undefined): void {
+    this.opts.snapshot = source;
+  }
+
+  get snapshot(): SqliteHttpSource | undefined {
+    return this.opts.snapshot;
+  }
 
   /**
    * Busca un producto recorriendo las capas en orden.

@@ -18,10 +18,22 @@ type WorkerCommand = DistributiveOmit<WorkerRequest, 'id'>;
 export interface SqliteHttpOptions {
   /** URL del archivo .sqlite3 servido por un host que soporte HTTP 206 */
   url: string;
+  /**
+   * `download` baja el archivo entero una vez (y despues funciona sin
+   * conexion); `range` consulta solo las paginas necesarias. Lo decide quien
+   * construye esta fuente, leyendo el tamano del indice.
+   */
+  strategy?: 'range' | 'download';
+  /** Clave de cache local; normalmente el pais */
+  cacheKey?: string;
+  /** Fecha del indice: si cambia, la copia guardada se descarta */
+  generatedAt?: string;
   blockSize?: number;
   maxBlocks?: number;
   /** ms antes de dar por perdida una consulta */
   timeout?: number;
+  /** Progreso de descarga, para poder mostrarlo */
+  onProgress?: (p: { loaded: number; total: number }) => void;
 }
 
 export interface ReaderStats {
@@ -41,9 +53,13 @@ export class SqliteHttpSource {
   >();
   private ready?: Promise<void>;
   private readonly timeout: number;
+  private readonly onProgress?: (p: { loaded: number; total: number }) => void;
 
   constructor(private readonly opts: SqliteHttpOptions) {
-    this.timeout = opts.timeout ?? 20_000;
+    // Una descarga completa en movil puede tardar bastante mas que una consulta
+    // por rangos, asi que el margen es mayor.
+    this.timeout = opts.timeout ?? (opts.strategy === 'download' ? 90_000 : 20_000);
+    this.onProgress = opts.onProgress;
   }
 
   /** Arranca el Worker y abre la base. Idempotente. */
@@ -61,6 +77,9 @@ export class SqliteHttpSource {
       await this.send({
         type: 'open',
         url: this.opts.url,
+        strategy: this.opts.strategy,
+        cacheKey: this.opts.cacheKey,
+        generatedAt: this.opts.generatedAt,
         blockSize: this.opts.blockSize,
         maxBlocks: this.opts.maxBlocks,
       });
@@ -71,6 +90,20 @@ export class SqliteHttpSource {
   private handle(res: WorkerResponse): void {
     const entry = this.pending.get(res.id);
     if (!entry) return;
+
+    // Los mensajes de progreso no resuelven la promesa: solo informan. Y
+    // reinician el temporizador, porque una descarga lenta pero viva no debe
+    // darse por perdida.
+    if ('progress' in res) {
+      clearTimeout(entry.timer);
+      entry.timer = setTimeout(() => {
+        this.pending.delete(res.id);
+        entry.reject(new Error(`Descarga del snapshot agotada tras ${this.timeout} ms sin avance`));
+      }, this.timeout);
+      this.onProgress?.(res.progress);
+      return;
+    }
+
     clearTimeout(entry.timer);
     this.pending.delete(res.id);
     if (res.ok) entry.resolve(res.result);
