@@ -48,7 +48,7 @@ jobs:
         env:
           # El snapshot vive en el repositorio de datos, publicado en el MISMO
           # origen (usuario.github.io), asi que no hay CORS de por medio.
-          VITE_SNAPSHOT_URL: ${{ vars.SNAPSHOT_URL || 'https://jmtt89.github.io/veskan-data/snapshot.sqlite3' }}
+          VITE_SNAPSHOT_URL: ${{ vars.SNAPSHOT_URL || 'https://raw.githubusercontent.com/jmtt89/veskan-data/data/snapshot.sqlite3' }}
         run: npm run build
 
       # `enablement: true` activa Pages si aun no lo esta, en vez de fallar.

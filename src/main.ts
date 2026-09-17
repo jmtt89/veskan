@@ -42,13 +42,28 @@ const APP_VERSION = '0.1.0';
 /**
  * URL del snapshot estatico (capa L1).
  *
- * Se usa `||` y no `??` a proposito: cuando una variable de GitHub Actions no
- * esta definida, la expresion se sustituye por CADENA VACIA, no por undefined,
- * y `??` no la atrapa. El resultado era una URL vacia que desactivaba la capa
- * en silencio. Ocurrio en el primer despliegue.
+ * Se sirve desde `raw.githubusercontent.com` y NO desde GitHub Pages, por un
+ * motivo que costo encontrar: **Pages comprime el archivo con gzip y aplica los
+ * rangos al flujo comprimido**. Verificado el 2026-09-17:
+ *
+ *   Pages, HEAD sin Accept-Encoding  -> content-length: 1105920  (real)
+ *   Pages, HEAD como un navegador    -> content-length:  317532  (comprimido)
+ *   Pages, Range 4096-8191           -> content-range: .../317532 y bytes que
+ *                                       no corresponden al archivo
+ *
+ * Resultado: SQLite creia que la base media 317 kB y devolvia
+ * SQLITE_CORRUPT. Con curl no se reproducia porque curl no pide compresion;
+ * solo fallaba en el navegador. jsDelivr hace lo mismo. Pages no comprime
+ * `image/*`, pero renombrar la base a .png seria una mentira fragil.
+ *
+ * `raw.githubusercontent.com` no comprime, respeta los rangos sobre los bytes
+ * reales y responde `access-control-allow-origin: *`.
+ *
+ * Se usa `||` y no `??`: cuando una variable de GitHub Actions no esta
+ * definida, la expresion se sustituye por CADENA VACIA, que `??` no atrapa.
  */
 const SNAPSHOT_URL: string =
-  import.meta.env.VITE_SNAPSHOT_URL || 'https://jmtt89.github.io/veskan-data/snapshot.sqlite3';
+  import.meta.env.VITE_SNAPSHOT_URL || 'https://raw.githubusercontent.com/jmtt89/veskan-data/data/snapshot.sqlite3';
 
 type View = 'scan' | 'result' | 'history' | 'search' | 'contribute' | 'about';
 
