@@ -406,8 +406,12 @@ function finalizeDb(target, maxProducts) {
  * ninguna necesidad: cabe de sobra bajo el limite real. Con 92 MB tiene medio
  * ano de margen, y los 8 MB que quedan son mucho mas de lo que crece un
  * catalogo entre dos reconstrucciones nocturnas.
+ *
+ * Se puede bajar con `--max-part-mb=N`. Era una constante en el codigo, y el
+ * workflow llegaba a decir "edita build-db.mjs" cuando un pais no cabia: un
+ * parametro de operacion no deberia exigir tocar el algoritmo.
  */
-const MAX_PART_BYTES = 92 * 1024 * 1024;
+const MAX_PART_BYTES = Number(args['max-part-mb'] ?? 92) * 1024 * 1024;
 
 /**
  * Parte un catalogo en varios SQLite, cada uno completo y funcional.
@@ -434,14 +438,49 @@ function splitDb(sourcePath, country, outDir, previousBounds) {
   let bounds = previousBounds;
   if (!bounds || bounds.length === 0) {
     const nParts = Math.max(2, Math.ceil(bytes / MAX_PART_BYTES));
-    const porParte = Math.ceil(total / nParts);
-    const corte = src.prepare('SELECT barcode FROM products ORDER BY barcode LIMIT 1 OFFSET ?');
+
+    /**
+     * Los cortes se eligen por PESO, no por numero de productos.
+     *
+     * Repartir a partes iguales de filas daba trozos muy desiguales, porque una
+     * fila con la lista de ingredientes entera pesa varias veces lo que una que
+     * solo tiene nombre: Estados Unidos salia 74,1 MB contra 53,5 MB. Y lo que
+     * importa no es el promedio sino el trozo MAYOR, que es el que puede pasarse
+     * de los 100 MB por archivo de GitHub. Con partes desiguales hay que trocear
+     * mas de la cuenta para que quepa el mas gordo.
+     *
+     * El peso se estima sumando la longitud de las columnas de texto mas una
+     * constante por las numericas. No es exacto -falta la sobrecarga de pagina y
+     * el indice FTS- pero es proporcional, que es lo unico que hace falta para
+     * repartir, y se calcula en una sola pasada.
+     */
+    const TEXTO = [
+      'name', 'brands', 'quantity', 'image_url', 'ingredients_text',
+      'additives', 'allergens', 'nutriscore_grade', 'implausible',
+    ];
+    const BYTES_FIJOS = 120; // codigo de barras, numericos y banderas
+    const peso = TEXTO.map((c) => `length(coalesce(${c},''))`).join(' + ');
+    const filas = src
+      .prepare(`SELECT barcode, ${peso} + ${BYTES_FIJOS} AS peso FROM products ORDER BY barcode`)
+      .all();
+
+    const totalPeso = filas.reduce((t, f) => t + f.peso, 0);
+    const objetivo = totalPeso / nParts;
     bounds = [];
-    for (let i = 1; i < nParts; i++) {
-      const fila = corte.get(i * porParte);
-      if (fila) bounds.push(fila.barcode);
+    let acumulado = 0;
+    let siguiente = 1;
+    for (const f of filas) {
+      if (siguiente >= nParts) break;
+      acumulado += f.peso;
+      if (acumulado >= objetivo * siguiente) {
+        bounds.push(f.barcode);
+        siguiente++;
+      }
     }
-    console.log(`  ${country}: ${(bytes / 1048576).toFixed(0)} MB, se parte en ${nParts}`);
+    console.log(
+      `  ${country}: ${(bytes / 1048576).toFixed(0)} MB y ${total.toLocaleString('es')} productos,` +
+        ` se parte en ${nParts} por peso`,
+    );
   } else {
     console.log(`  ${country}: se reutilizan los ${bounds.length + 1} cortes anteriores`);
   }
