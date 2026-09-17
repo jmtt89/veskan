@@ -51,7 +51,12 @@ jobs:
           VITE_SNAPSHOT_URL: ${{ vars.SNAPSHOT_URL }}
         run: npm run build
 
+      # `enablement: true` activa Pages si aun no lo esta, en vez de fallar.
+      # Sin esto, el primer push de un repositorio nuevo siempre falla porque
+      # el workflow corre antes de que nadie haya configurado Pages a mano.
       - uses: actions/configure-pages@v5
+        with:
+          enablement: true
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist
