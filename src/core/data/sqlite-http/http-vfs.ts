@@ -71,16 +71,27 @@ const SQLITE_CANTOPEN = 14;
 const SQLITE_IOCAP_IMMUTABLE = 0x2000;
 
 /**
- * Archivos abiertos, indexados por el puntero de `sqlite3_file`.
- * El VFS solo sirve UN archivo remoto, registrado antes de abrir la base.
+ * Lectores registrados, indexados por el NOMBRE LOGICO del archivo.
+ *
+ * Antes habia un unico `sharedReader` de modulo, lo que limitaba el VFS a
+ * servir un solo archivo remoto: abrir el catalogo de otro pais reemplazaba al
+ * anterior. Ahora cada archivo tiene su lector, con su propia cache LRU y sus
+ * propias estadisticas, y SQLite elige cual usar por el nombre que pasa a
+ * `xOpen`.
  */
+const readers = new Map<string, RangeReader>();
+
+/** Archivos abiertos, indexados por el puntero de `sqlite3_file`. */
 const openFiles = new Map<number, RangeReader>();
 
-let registeredUrl: string | undefined;
-let sharedReader: RangeReader | undefined;
 let installed = false;
 
 export interface InstallOptions {
+  /**
+   * Nombre logico con el que se abrira la base, p.ej. `venezuela.sqlite3`.
+   * Es el que SQLite pasa a `xOpen`, y por tanto la clave de busqueda.
+   */
+  name: string;
   /** URL del archivo SQLite remoto */
   url: string;
   /** Debe coincidir con el `page_size` de la base */
@@ -88,24 +99,52 @@ export interface InstallOptions {
   maxBlocks?: number;
 }
 
-/** Estadisticas de red, para poder mostrar cuanto se transfirio de verdad. */
-export function getReaderStats() {
-  return sharedReader?.stats;
+/**
+ * Estadisticas de red de un archivo, para poder mostrar cuanto se transfirio
+ * de verdad. Sin nombre, agrega las de todos.
+ */
+export function getReaderStats(name?: string) {
+  if (name) return readers.get(name)?.stats;
+  const total = {
+    requests: 0, bytesTransferred: 0, cacheHits: 0, cacheMisses: 0, evictions: 0,
+  };
+  for (const r of readers.values()) {
+    total.requests += r.stats.requests;
+    total.bytesTransferred += r.stats.bytesTransferred;
+    total.cacheHits += r.stats.cacheHits;
+    total.cacheMisses += r.stats.cacheMisses;
+    total.evictions += r.stats.evictions;
+  }
+  return total;
+}
+
+/** Olvida un archivo registrado y libera su cache. */
+export function unregisterFile(name: string): void {
+  readers.get(name)?.clearCache();
+  readers.delete(name);
+}
+
+export function registeredFiles(): string[] {
+  return [...readers.keys()];
 }
 
 /**
- * Registra el VFS en la instancia de sqlite3. Es idempotente: llamarlo dos
- * veces solo cambia la URL apuntada.
+ * Registra un archivo remoto e instala el VFS si aun no lo estaba.
+ *
+ * Llamarlo varias veces con nombres distintos acumula archivos; con el mismo
+ * nombre, reemplaza su lector (util cuando el snapshot se republica).
  */
 export function installHttpVfs(sqlite3: Sqlite3Api, opts: InstallOptions): void {
   const { capi, wasm } = sqlite3;
 
-  registeredUrl = opts.url;
-  sharedReader = new RangeReader({
-    url: opts.url,
-    blockSize: opts.blockSize ?? 4096,
-    maxBlocks: opts.maxBlocks ?? 4096,
-  });
+  readers.set(
+    opts.name,
+    new RangeReader({
+      url: opts.url,
+      blockSize: opts.blockSize ?? 4096,
+      maxBlocks: opts.maxBlocks ?? 4096,
+    }),
+  );
 
   if (installed) return;
 
@@ -177,8 +216,8 @@ export function installHttpVfs(sqlite3: Sqlite3Api, opts: InstallOptions): void 
     xFileControl(): number {
       return SQLITE_NOTFOUND;
     },
-    xSectorSize(): number {
-      return sharedReader?.blockSize ?? 4096;
+    xSectorSize(pFile: number): number {
+      return openFiles.get(pFile)?.blockSize ?? 4096;
     },
     xDeviceCharacteristics(): number {
       // Declarar el archivo inmutable permite a SQLite saltarse comprobaciones
@@ -191,12 +230,18 @@ export function installHttpVfs(sqlite3: Sqlite3Api, opts: InstallOptions): void 
   ioStruct.$iVersion = 1;
 
   const vfsMethods = {
-    xOpen(_pVfs: number, _zName: number, pFile: number, _flags: number, pOutFlags: number): number {
-      if (!sharedReader) return SQLITE_CANTOPEN;
+    xOpen(_pVfs: number, zName: number, pFile: number, _flags: number, pOutFlags: number): number {
+      // El nombre es lo que decide QUE archivo remoto se abre. Antes se
+      // ignoraba y siempre se usaba el mismo lector.
+      const reader = zName ? readers.get(baseName(wasm.cstrToJs(zName))) : undefined;
+      // Un nombre no registrado suele ser un journal o un temporal. Al abrirse
+      // la base con `immutable=1` no deberian aparecer, y si aparecen es mejor
+      // negarlos que servir bytes de otro archivo.
+      if (!reader) return SQLITE_CANTOPEN;
       try {
         const file = new capi.sqlite3_file(pFile);
         file.$pMethods = ioStruct.pointer;
-        openFiles.set(pFile, sharedReader);
+        openFiles.set(pFile, reader);
         // Se fuerza solo-lectura sea cual sea el flag pedido.
         wasm.poke32(pOutFlags, 1 /* SQLITE_OPEN_READONLY */);
         return SQLITE_OK;
@@ -209,9 +254,11 @@ export function installHttpVfs(sqlite3: Sqlite3Api, opts: InstallOptions): void 
       return SQLITE_READONLY;
     },
 
-    xAccess(_pVfs: number, _zName: number, _flags: number, pOut: number): number {
-      // El unico archivo que existe es el remoto, y siempre "existe".
-      wasm.poke32(pOut, sharedReader ? 1 : 0);
+    xAccess(_pVfs: number, zName: number, _flags: number, pOut: number): number {
+      // Solo "existen" los archivos registrados. Responder que si a cualquier
+      // nombre haria que SQLite buscase journals que no existen.
+      const exists = zName ? readers.has(baseName(wasm.cstrToJs(zName))) : false;
+      wasm.poke32(pOut, exists ? 1 : 0);
       return SQLITE_OK;
     },
 
@@ -265,11 +312,22 @@ export function installHttpVfs(sqlite3: Sqlite3Api, opts: InstallOptions): void 
   installed = true;
 }
 
-export function getRegisteredUrl(): string | undefined {
-  return registeredUrl;
+export function getRegisteredUrl(name: string): string | undefined {
+  return readers.get(name)?.url;
 }
 
 /** Precarga la cabecera y las primeras paginas, donde vive el esquema. */
-export function warmup(bytes = 64 * 1024): void {
-  sharedReader?.prefetch(0, bytes);
+export function warmup(name: string, bytes = 64 * 1024): void {
+  readers.get(name)?.prefetch(0, bytes);
+}
+
+/**
+ * Normaliza el nombre que pasa SQLite a la clave del registro.
+ *
+ * SQLite puede entregar una ruta completa (`/venezuela.sqlite3`) porque
+ * `xFullPathname` la devuelve tal cual, asi que se compara solo el nombre.
+ */
+function baseName(path: string): string {
+  const i = path.lastIndexOf('/');
+  return i >= 0 ? path.slice(i + 1) : path;
 }

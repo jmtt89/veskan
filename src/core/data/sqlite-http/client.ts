@@ -1,21 +1,19 @@
 /**
- * Cliente del Worker de SQLite remoto (capa L1).
+ * Fuente de datos sobre un snapshot SQLite, una por pais.
  *
- * Expone una API de promesas sobre el paso de mensajes, y traduce las filas
- * del snapshot a nuestro modelo de dominio.
+ * Ya NO es "una fuente = un Worker": todas cuelgan del Worker unico de
+ * `worker-pool.ts`, porque el VFS de OPFS no admite dos instancias sobre el
+ * mismo directorio. Cada fuente se identifica ante el Worker con su nombre
+ * logico (el pais) y mantiene su propia conexion alli.
  */
 
 import type { Product } from '../../types.js';
-import type { WorkerRequest, WorkerResponse } from './sqlite.worker.js';
-
-/**
- * `Omit<Union, K>` colapsa una union discriminada en un solo objeto y pierde
- * las variantes. Esta version se distribuye sobre cada miembro y las conserva.
- */
-type DistributiveOmit<T, K extends PropertyKey> = T extends unknown ? Omit<T, K> : never;
-type WorkerCommand = DistributiveOmit<WorkerRequest, 'id'>;
+import type { OpenStrategy } from './sqlite.worker.js';
+import { send, type ProgressHandler } from './worker-pool.js';
 
 export interface SqliteHttpOptions {
+  /** Nombre logico, normalmente el pais. Identifica la conexion en el Worker. */
+  source: string;
   /** URL del archivo .sqlite3 servido por un host que soporte HTTP 206 */
   url: string;
   /**
@@ -23,9 +21,7 @@ export interface SqliteHttpOptions {
    * conexion); `range` consulta solo las paginas necesarias. Lo decide quien
    * construye esta fuente, leyendo el tamano del indice.
    */
-  strategy?: 'range' | 'download';
-  /** Clave de cache local; normalmente el pais */
-  cacheKey?: string;
+  strategy?: OpenStrategy;
   /** Fecha del indice: si cambia, la copia guardada se descarta */
   generatedAt?: string;
   blockSize?: number;
@@ -33,7 +29,7 @@ export interface SqliteHttpOptions {
   /** ms antes de dar por perdida una consulta */
   timeout?: number;
   /** Progreso de descarga, para poder mostrarlo */
-  onProgress?: (p: { loaded: number; total: number }) => void;
+  onProgress?: ProgressHandler;
 }
 
 export interface ReaderStats {
@@ -45,135 +41,86 @@ export interface ReaderStats {
 }
 
 export class SqliteHttpSource {
-  private worker?: Worker;
-  private nextId = 1;
-  private readonly pending = new Map<
-    number,
-    { resolve: (v: unknown) => void; reject: (e: Error) => void; timer: ReturnType<typeof setTimeout> }
-  >();
   private ready?: Promise<void>;
   private readonly timeout: number;
-  private readonly onProgress?: (p: { loaded: number; total: number }) => void;
 
   constructor(private readonly opts: SqliteHttpOptions) {
     // Una descarga completa en movil puede tardar bastante mas que una consulta
     // por rangos, asi que el margen es mayor.
     this.timeout = opts.timeout ?? (opts.strategy === 'download' ? 90_000 : 20_000);
-    this.onProgress = opts.onProgress;
   }
 
-  /** Arranca el Worker y abre la base. Idempotente. */
+  get source(): string {
+    return this.opts.source;
+  }
+
+  get strategy(): OpenStrategy {
+    return this.opts.strategy ?? 'range';
+  }
+
+  /** Abre la conexion en el Worker. Idempotente. */
   init(): Promise<void> {
     if (this.ready) return this.ready;
-    this.ready = (async () => {
-      this.worker = new Worker(new URL('./sqlite.worker.js', import.meta.url), {
-        type: 'module',
-      });
-      this.worker.onmessage = (e: MessageEvent<WorkerResponse>) => this.handle(e.data);
-      this.worker.onerror = (e) => {
-        for (const [, p] of this.pending) p.reject(new Error(`Worker de SQLite: ${e.message}`));
-        this.pending.clear();
-      };
-      await this.send({
+    this.ready = send<void>(
+      {
         type: 'open',
+        source: this.opts.source,
         url: this.opts.url,
         strategy: this.opts.strategy,
-        cacheKey: this.opts.cacheKey,
         generatedAt: this.opts.generatedAt,
         blockSize: this.opts.blockSize,
         maxBlocks: this.opts.maxBlocks,
-      });
-    })();
-    return this.ready;
-  }
-
-  private handle(res: WorkerResponse): void {
-    const entry = this.pending.get(res.id);
-    if (!entry) return;
-
-    // Los mensajes de progreso no resuelven la promesa: solo informan. Y
-    // reinician el temporizador, porque una descarga lenta pero viva no debe
-    // darse por perdida.
-    if ('progress' in res) {
-      clearTimeout(entry.timer);
-      entry.timer = setTimeout(() => {
-        this.pending.delete(res.id);
-        entry.reject(new Error(`Descarga del snapshot agotada tras ${this.timeout} ms sin avance`));
-      }, this.timeout);
-      this.onProgress?.(res.progress);
-      return;
-    }
-
-    clearTimeout(entry.timer);
-    this.pending.delete(res.id);
-    if (res.ok) entry.resolve(res.result);
-    else entry.reject(new Error(res.error));
-  }
-
-  private send<T = unknown>(msg: WorkerCommand): Promise<T> {
-    if (!this.worker) throw new Error('Worker no iniciado');
-    const id = this.nextId++;
-    return new Promise<T>((resolve, reject) => {
-      const timer = setTimeout(() => {
-        this.pending.delete(id);
-        reject(new Error(`Consulta a la base remota agotada tras ${this.timeout} ms`));
-      }, this.timeout);
-      this.pending.set(id, {
-        resolve: resolve as (v: unknown) => void,
-        reject,
-        timer,
-      });
-      this.worker!.postMessage({ ...msg, id } as WorkerRequest);
+      },
+      { timeout: this.timeout, onProgress: this.opts.onProgress },
+    ).then(() => undefined);
+    // Si la apertura falla, no dejar cacheada una promesa rechazada: impediria
+    // reintentar sin recrear la fuente.
+    this.ready.catch(() => {
+      this.ready = undefined;
     });
+    return this.ready;
   }
 
   async getProduct(barcode: string): Promise<Product | undefined> {
     await this.init();
-    const row = await this.send<SnapshotRow | null>({
-      type: 'get',
-      sql: 'SELECT * FROM products WHERE barcode = ? LIMIT 1',
-      params: [barcode],
-    });
+    const row = await send<SnapshotRow | null>(
+      {
+        type: 'get',
+        source: this.opts.source,
+        sql: 'SELECT * FROM products WHERE barcode = ? LIMIT 1',
+        params: [barcode],
+      },
+      { timeout: this.timeout },
+    );
     return row ? rowToProduct(row) : undefined;
   }
 
-  /** Busqueda por texto sobre el indice FTS del snapshot. */
+  /**
+   * Busqueda por texto sobre el indice FTS del snapshot.
+   *
+   * El SQL lo arma el Worker, no este cliente: solo alli se conocen las
+   * columnas reales del archivo abierto, y cliente y datos se despliegan por
+   * separado.
+   */
   async search(term: string, limit = 25): Promise<Product[]> {
     await this.init();
-    const cleaned = term.trim().replace(/["']/g, '');
-    if (!cleaned) return [];
-    const rows = await this.send<SnapshotRow[]>({
-      type: 'query',
-      // Se une por `barcode`, no por rowid: la tabla `products` es
-      // WITHOUT ROWID y por tanto no tiene columna rowid que usar.
-      //
-      // Se ordena por relevancia textual Y POPULARIDAD. Solo con `rank`, buscar
-      // "harina" devolvia antes coincidencias exactas de productos que nadie
-      // escanea que "Harina P.A.N.", que es la que la gente busca de verdad.
-      sql: `SELECT p.* FROM products_fts f
-            JOIN products p ON p.barcode = f.barcode
-            WHERE products_fts MATCH ?
-            ORDER BY rank, COALESCE(p.popularity, 0) DESC
-            LIMIT ?`,
-      params: [`${cleaned}*`, limit],
-    });
+    const rows = await send<SnapshotRow[]>(
+      { type: 'search', source: this.opts.source, term, limit },
+      { timeout: this.timeout },
+    );
     return rows.map(rowToProduct);
   }
 
   async stats(): Promise<ReaderStats | null> {
     await this.init();
-    return this.send<ReaderStats | null>({ type: 'stats' });
+    return send<ReaderStats | null>({ type: 'stats', source: this.opts.source });
   }
 
+  /** Cierra esta conexion. El Worker sigue vivo para las demas fuentes. */
   async close(): Promise<void> {
-    if (!this.worker) return;
-    try {
-      await this.send({ type: 'close' });
-    } finally {
-      this.worker.terminate();
-      this.worker = undefined;
-      this.ready = undefined;
-    }
+    if (!this.ready) return;
+    this.ready = undefined;
+    await send({ type: 'close', source: this.opts.source }).catch(() => {});
   }
 }
 

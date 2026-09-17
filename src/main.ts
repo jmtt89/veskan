@@ -149,9 +149,9 @@ async function useCountry(country: string): Promise<void> {
   await repo.snapshot?.close().catch(() => {});
 
   const source = new SqliteHttpSource({
+    source: country,
     url: `${SNAPSHOT_BASE_URL}/${entry.file}`,
     strategy,
-    cacheKey: country,
     generatedAt: index.generated_at,
     onProgress: (p) => {
       state.downloadProgress = p;
