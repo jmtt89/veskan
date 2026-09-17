@@ -10,15 +10,22 @@
   --border: #dde2e9;
   --text: #11161d;
   --text-dim: #5a6472;
-  --accent: #0f9d58;
+  /* Verde de marca oscurecido hasta 5.41:1 con texto blanco. El #0f9d58
+     original daba 3.51:1 y no llegaba al minimo AA de 4.5:1. */
+  --accent: #0b7a44;
   --accent-text: #ffffff;
+  /* Para el verde usado como TEXTO sobre fondo claro (pestana activa). */
+  --accent-fg: #0b7a44;
   --danger: #d93025;
   --warning: #f9a825;
 
-  --score-excellent: #0f9d58;
-  --score-good: #7cb342;
-  --score-mediocre: #f9a825;
-  --score-poor: #f4511e;
+  /* Estos colores se usan como FONDO con texto blanco encima, asi que todos
+     cumplen 4.5:1 contra blanco. Los tonos vivos originales (#f9a825 daba
+     1.97:1) eran ilegibles en ese uso. */
+  --score-excellent: #0d864b;
+  --score-good: #59802f;
+  --score-mediocre: #a46705;
+  --score-poor: #d73b0b;
   --score-bad: #d93025;
 
   --radius: 14px;
@@ -32,6 +39,9 @@
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme='light']) {
+    /* El verde de fondo no cambia (el texto blanco encima sigue cumpliendo);
+       el verde de TEXTO si, porque sobre fondo oscuro debe aclararse. */
+    --accent-fg: #34d399;
     --bg: #0b0f14;
     --surface: #151b23;
     --surface-2: #1e262f;
@@ -43,6 +53,7 @@
 }
 
 :root[data-theme='dark'] {
+  --accent-fg: #34d399;
   --bg: #0b0f14;
   --surface: #151b23;
   --surface-2: #1e262f;
@@ -139,7 +150,7 @@ body {
 }
 
 .tabbar button[aria-current='page'] {
-  color: var(--accent);
+  color: var(--accent-fg);
 }
 
 .tabbar svg {
@@ -325,13 +336,16 @@ main {
   gap: 3px;
 }
 
+/* Los colores del Nutri-Score son los de la marca oficial y NO pueden
+   alterarse: su reglamento de uso incluye una carta grafica. Lo que si se
+   ajusta es el color del texto encima, que con el amarillo (#fecb02) en blanco
+   daba 1.53:1. Se fija por letra en el marcado. */
 .nutriscore-scale span {
   flex: 1;
   text-align: center;
   padding: 7px 0;
   font-weight: 800;
   font-size: 0.92rem;
-  color: #fff;
   opacity: 0.32;
   border-radius: 5px;
   transition: opacity 0.2s;

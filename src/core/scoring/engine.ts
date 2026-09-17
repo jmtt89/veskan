@@ -248,10 +248,17 @@ export const BAND_LABELS: Record<HealthScore['band'], string> = {
   bad: 'Muy malo',
 };
 
+/**
+ * Colores de banda.
+ *
+ * Se usan como FONDO con texto blanco encima, asi que todos cumplen el minimo
+ * AA de 4.5:1 contra blanco. Los tonos vivos habituales no servian: el ambar
+ * #ffc107 con texto blanco da 1.97:1, practicamente ilegible.
+ */
 export const BAND_COLORS: Record<HealthScore['band'], string> = {
-  excellent: '#0f9d58',
-  good: '#8bc34a',
-  mediocre: '#ffc107',
-  poor: '#ff7043',
-  bad: '#e53935',
+  excellent: '#0d864b',
+  good: '#59802f',
+  mediocre: '#a46705',
+  poor: '#d73b0b',
+  bad: '#d93025',
 };

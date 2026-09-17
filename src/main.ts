@@ -216,6 +216,7 @@ function scanView(): SafeHtml {
           Suele funcionar mejor que el vídeo en vivo: la cámara del sistema enfoca de verdad y
           captura a resolución completa.
         </p>
+        <label for="photo-input">Selecciona o toma una foto del código de barras</label>
         <input id="photo-input" type="file" accept="image/*" capture="environment" />
       </div>
 

@@ -89,7 +89,7 @@ export default defineConfig({
           'Escanea el código de barras de un producto y obtén una puntuación de salud abierta y auditable, basada en Nutri-Score 2023, NOVA, evaluaciones de aditivos de EFSA y el modelo de perfil de nutrientes de la OPS.',
         lang: 'es',
         dir: 'ltr',
-        theme_color: '#0f9d58',
+        theme_color: '#0b7a44',
         background_color: '#0b0f14',
         display: 'standalone',
         orientation: 'portrait',

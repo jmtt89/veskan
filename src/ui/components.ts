@@ -23,12 +23,26 @@ import {
 import { PAHO_SEAL_LABELS } from '../core/scoring/paho.js';
 import { NOVA_DESCRIPTIONS } from '../core/scoring/nova.js';
 
+/** Colores oficiales de la marca Nutri-Score. No deben alterarse. */
 const NUTRISCORE_COLORS: Record<string, string> = {
   a: '#038141',
   b: '#85bb2f',
   c: '#fecb02',
   d: '#ee8100',
   e: '#e63e11',
+};
+
+/**
+ * Color del texto sobre cada fondo, elegido por contraste medido.
+ * Con blanco sobre el amarillo de la C el ratio era 1.53:1; con negro es
+ * 12.37:1. Solo la A admite texto blanco (4.98:1).
+ */
+const NUTRISCORE_TEXT: Record<string, string> = {
+  a: '#ffffff',
+  b: '#111111',
+  c: '#111111',
+  d: '#111111',
+  e: '#111111',
 };
 
 const COMPONENT_LABELS: Record<string, string> = {
@@ -104,7 +118,9 @@ export function nutriscoreCard(ns: NutriscoreResult): SafeHtml {
       <div class="nutriscore-scale">
         ${letters.map(
           (l) => html`<span
-            style="background:${raw(NUTRISCORE_COLORS[l] ?? '#888')}"
+            style="background:${raw(NUTRISCORE_COLORS[l] ?? '#888')};color:${raw(
+              NUTRISCORE_TEXT[l] ?? '#111111',
+            )}"
             data-active="${l === ns.grade}"
             >${l.toUpperCase()}</span
           >`,
