@@ -7,6 +7,7 @@
  */
 
 import './styles.css';
+import { registerSW } from 'virtual:pwa-register';
 import { html, mount, raw, type SafeHtml } from './ui/render.js';
 import { additiveSheet, assessmentView } from './ui/components.js';
 import { OffClient, OffRateLimitError } from './core/data/off.js';
@@ -1433,7 +1434,8 @@ async function lookup(barcode: string): Promise<void> {
       return;
     }
     state.sparseProduct = false;
-    state.assessment = await repo.assess(normalized);
+    // Se evalua el producto que ya tenemos, sin volver a pedirlo por codigo.
+    state.assessment = await repo.assessProduct(product);
   } catch (err) {
     if (err instanceof ProductNotFoundError) {
       state.error =
@@ -1768,7 +1770,9 @@ root.addEventListener('click', (event) => {
       void promptInstall();
       break;
     case 'apply-update':
-      location.reload();
+      // `true` hace `skipWaiting()` y recarga: sin eso la version nueva sigue
+      // esperando y el boton no haria nada visible.
+      void updateSW(true);
       break;
     case 'start-camera':
       state.scannerActive = true;
@@ -1919,6 +1923,25 @@ root.addEventListener('keydown', (event) => {
     (target as HTMLInputElement).blur();
     void runSearch();
   }
+});
+
+/**
+ * Registro del service worker, con aviso de version nueva.
+ *
+ * `registerType: 'prompt'` NO activa sola la version nueva: se queda esperando
+ * mientras haya una pestana abierta. Sin este cableado el usuario se quedaba
+ * con la version que cargo la primera vez **para siempre**, y cada despliegue
+ * era invisible. El aviso de «Mas» existia en la interfaz pero nadie lo
+ * encendia.
+ *
+ * Se prefiere avisar a activar sin preguntar: recargar en medio de un escaneo
+ * o de una descarga de catalogo seria peor que esperar un momento.
+ */
+const updateSW = registerSW({
+  onNeedRefresh() {
+    state.updateReady = true;
+    render();
+  },
 });
 
 /**

@@ -127,7 +127,20 @@ export class ProductRepository {
 
   /** Busca y evalua en una sola operacion, y lo anota en el historial. */
   async assess(barcode: string, options: LookupOptions = {}): Promise<Assessment> {
-    const product = await this.lookup(barcode, options);
+    return this.assessProduct(await this.lookup(barcode, options));
+  }
+
+  /**
+   * Evalua un producto YA obtenido.
+   *
+   * Existe porque quien llama suele necesitar el producto antes de puntuarlo
+   * -- para comprobar que trae datos suficientes -- y volver a pedirlo por
+   * codigo lo encontraba en la cache que acababa de escribir la primera
+   * busqueda. Ademas de repetir el trabajo, eso falseaba la procedencia: todo
+   * acababa marcado como «guardado en este dispositivo», aunque viniera de
+   * Open Food Facts hacia un segundo.
+   */
+  async assessProduct(product: Product): Promise<Assessment> {
     const ctx = await this.opts.scoringContext();
 
     if (product.kind === 'cosmetic') {

@@ -35,7 +35,10 @@ export default defineConfig({
   plugins: [
     VitePWA({
       registerType: 'prompt',
-      injectRegister: 'auto',
+      // `null` y no 'auto': el registro lo hace la aplicacion, que es la unica
+      // que puede enterarse de que hay una version esperando y ofrecerla. El
+      // script que inyecta 'auto' registra y se desentiende.
+      injectRegister: null,
       workbox: {
         // El sourcemap del Service Worker incrusta rutas ABSOLUTAS del sistema
         // de archivos de quien compila (`/home/<usuario>/...`), que acabarian
