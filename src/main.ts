@@ -39,8 +39,16 @@ const APP_VERSION = '0.1.0';
  * por CDN con soporte de HTTP Range; se puede sobreescribir en tiempo de
  * compilacion para desarrollo local.
  */
-const SNAPSHOT_URL =
-  import.meta.env.VITE_SNAPSHOT_URL ?? 'https://jmtt89.github.io/veskan-data/snapshot.sqlite3';
+/**
+ * URL del snapshot estatico (capa L1).
+ *
+ * Se usa `||` y no `??` a proposito: cuando una variable de GitHub Actions no
+ * esta definida, la expresion se sustituye por CADENA VACIA, no por undefined,
+ * y `??` no la atrapa. El resultado era una URL vacia que desactivaba la capa
+ * en silencio. Ocurrio en el primer despliegue.
+ */
+const SNAPSHOT_URL: string =
+  import.meta.env.VITE_SNAPSHOT_URL || 'https://jmtt89.github.io/veskan-data/snapshot.sqlite3';
 
 type View = 'scan' | 'result' | 'history' | 'search' | 'contribute' | 'about';
 

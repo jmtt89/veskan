@@ -59,10 +59,12 @@ npm run dev
 # Rápido: desde la API, sin descargar el volcado completo
 node scripts/build-db.mjs --countries=spain,mexico,venezuela,colombia --limit=250
 
-# Producción: desde el volcado nocturno de OFF (~0,9 GB comprimido)
-curl -L -o data/openfoodfacts-products.jsonl.gz \
-  https://static.openfoodfacts.org/data/openfoodfacts-products.jsonl.gz
-node scripts/build-db.mjs --mode=dump --countries=spain,mexico,colombia,venezuela
+# Producción: desde el volcado nocturno de OFF.
+# El JSONL pesa 12 GB comprimidos (el que ronda 1 GB es el CSV, otro archivo),
+# así que conviene transmitirlo en vez de guardarlo:
+curl -fL https://static.openfoodfacts.org/data/openfoodfacts-products.jsonl.gz \
+  | node scripts/build-db.mjs --mode=dump --stdin \
+      --countries=spain,mexico,colombia,venezuela
 ```
 
 Pesa **~1 kB por producto**. 100.000 productos ≈ 110 MB, que supera el límite de 100 MB por archivo de GitHub: a partir de ahí hay que partir por región o servirlo desde Cloudflare R2.

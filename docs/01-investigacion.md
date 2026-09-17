@@ -155,7 +155,7 @@ is_beverage, is_cheese, is_fat_oil_nuts_seeds, is_red_meat_product, is_water
 **Exportaciones estáticas (actualización nocturna):**
 | Formato | URL | Tamaño |
 |---|---|---|
-| JSONL | `static.openfoodfacts.org/data/openfoodfacts-products.jsonl.gz` | redirige a S3 |
+| JSONL | `static.openfoodfacts.org/data/openfoodfacts-products.jsonl.gz` | **12 GB comprimido** [verificado] |
 | CSV | `static.openfoodfacts.org/data/en.openfoodfacts.org.products.csv.gz` | ~0.9 GB comp. / ~9 GB sin comp. |
 | **Parquet** | `huggingface.co/datasets/openfoodfacts/product-database` → `food.parquet` | columnar, columnas depuradas |
 | MongoDB | `openfoodfacts-mongodbdump.gz` + **deltas de 14 días** | — |

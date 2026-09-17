@@ -180,6 +180,43 @@ const API_FIELDS = [
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+/**
+ * Limitador de ritmo por ventana deslizante.
+ *
+ * Open Food Facts permite 10 busquedas por minuto y por IP. Esperar un intervalo
+ * fijo entre peticiones no basta: los REINTENTOS tambien consumen cupo, asi que
+ * un fallo arrastra al siguiente y el efecto se acumula hasta que los ultimos
+ * paises se quedan sin nada. (Ocurrio: Venezuela, Colombia y Chile terminaron
+ * con 0 productos.)
+ *
+ * Esto cuenta las peticiones REALES de la ultima ventana y espera lo necesario
+ * antes de cada una, reintentos incluidos.
+ */
+class RateLimiter {
+  constructor(maxPerWindow = 8, windowMs = 60_000) {
+    this.max = maxPerWindow;
+    this.windowMs = windowMs;
+    this.calls = [];
+  }
+
+  async acquire() {
+    for (;;) {
+      const now = Date.now();
+      this.calls = this.calls.filter((t) => now - t < this.windowMs);
+      if (this.calls.length < this.max) {
+        this.calls.push(now);
+        return;
+      }
+      const wait = this.windowMs - (now - this.calls[0]) + 500;
+      process.stdout.write(`\r  (limite de peticiones: esperando ${Math.ceil(wait / 1000)}s)      `);
+      await sleep(wait);
+    }
+  }
+}
+
+// 8 de 10 permitidas: se deja holgura deliberada para no rozar el limite.
+const limiter = new RateLimiter(8, 60_000);
+
 async function collectFromApi() {
   const out = [];
   const seen = new Set();
@@ -190,7 +227,8 @@ async function collectFromApi() {
         `https://world.openfoodfacts.org/api/v2/search?countries_tags_en=${country}` +
         `&fields=${API_FIELDS}&page_size=100&page=${page}&sort_by=popularity_key`;
       let data;
-      for (let attempt = 0; attempt < 4; attempt++) {
+      for (let attempt = 0; attempt < 6; attempt++) {
+        await limiter.acquire();
         try {
           const res = await fetch(url, { headers: { 'User-Agent': UA } });
           if (res.status === 503 || res.status === 429) throw new Error(`HTTP ${res.status}`);
@@ -198,10 +236,18 @@ async function collectFromApi() {
           data = await res.json();
           break;
         } catch (e) {
-          process.stdout.write(`\r  ${country}: reintento ${attempt + 1} (${e.message})        `);
-          // La API limita a 10 busquedas/min: se espera de sobra.
-          await sleep(15000);
+          // Retroceso exponencial: 20s, 40s, 80s... Un 503 significa que el
+          // servidor ya esta saturado; insistir enseguida solo lo empeora.
+          const backoff = 20000 * 2 ** attempt;
+          process.stdout.write(
+            `\r  ${country}: reintento ${attempt + 1}/6 tras ${backoff / 1000}s (${e.message})     `,
+          );
+          await sleep(backoff);
         }
+      }
+      if (!data) {
+        console.log(`\n  AVISO: ${country} no respondio tras 6 intentos. Se continua sin sus datos.`);
+        break;
       }
       if (!data?.products?.length) break;
       for (const p of data.products) {
@@ -214,16 +260,27 @@ async function collectFromApi() {
       }
       process.stdout.write(`\r  ${country}: ${collected} productos            `);
       if (data.products.length < 100) break;
-      await sleep(7000);
     }
     process.stdout.write(`\r  ${country}: ${collected} productos            \n`);
   }
   return out;
 }
 
+/**
+ * Lee el volcado linea a linea, desde un archivo o desde la entrada estandar.
+ *
+ * La opcion `--stdin` existe por una razon concreta: el volcado JSONL de Open
+ * Food Facts pesa **12 GB comprimidos** (no 0,9 GB, que es el del CSV), y un
+ * runner de GitHub Actions trae unos 14 GB libres. Guardarlo en disco antes de
+ * procesarlo dejaria la maquina al borde y el workflow fallaria de forma
+ * intermitente. Transmitiendolo no se almacena nada:
+ *
+ *   curl -fL <url> | node scripts/build-db.mjs --mode=dump --stdin
+ */
 async function* readDump(path) {
+  const source = path === '-' ? process.stdin : createReadStream(path);
   const rl = createInterface({
-    input: createReadStream(path).pipe(createGunzip()),
+    input: source.pipe(createGunzip()),
     crlfDelay: Infinity,
   });
   for await (const line of rl) {
@@ -260,16 +317,18 @@ async function main() {
 
   let rows;
   if (MODE === 'dump') {
-    const dumpPath = resolve(ROOT, args.dump ?? 'data/openfoodfacts-products.jsonl.gz');
-    if (!existsSync(dumpPath)) {
+    const useStdin = Boolean(args.stdin);
+    const dumpPath = useStdin ? '-' : resolve(ROOT, args.dump ?? 'data/openfoodfacts-products.jsonl.gz');
+    if (!useStdin && !existsSync(dumpPath)) {
       console.error(`No se encuentra el volcado en ${dumpPath}`);
       console.error('Descargalo con:');
       console.error('  curl -L -o data/openfoodfacts-products.jsonl.gz \\');
       console.error('    https://static.openfoodfacts.org/data/openfoodfacts-products.jsonl.gz');
       process.exit(1);
     }
-    console.log(`Procesando ${dumpPath} ...`);
+    console.log(useStdin ? 'Procesando el volcado desde la entrada estandar ...' : `Procesando ${dumpPath} ...`);
     const wanted = new Set(COUNTRIES.map((c) => `en:${c}`));
+    const startedAt = Date.now();
     let seen = 0;
     let kept = 0;
     let batch = [];
@@ -284,7 +343,10 @@ async function main() {
       if (batch.length >= 5000) {
         insertMany(batch);
         batch = [];
-        process.stdout.write(`\r  leidos ${seen}, guardados ${kept}   `);
+      }
+      if (seen % 50000 === 0) {
+        const mins = ((Date.now() - startedAt) / 60000).toFixed(1);
+        process.stdout.write(`\r  leidos ${seen.toLocaleString('es')}, guardados ${kept.toLocaleString('es')} (${mins} min)   `);
       }
     }
     if (batch.length) insertMany(batch);
