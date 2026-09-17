@@ -624,7 +624,9 @@ function novaEvidence(score: HealthScore): SafeHtml {
           )}
         `
       : html`<p class="ev-note">
-          No se han encontrado marcadores de ultraprocesamiento en los ingredientes declarados.
+          No hemos reconocido marcadores de ultraprocesamiento en los ingredientes registrados.
+          Eso no prueba que no los haya: en muchos productos la lista está transcrita a medias o
+          mal leída, y entonces no hay nada que reconocer.
         </p>`}
 
     <p class="ev-text" style="margin-top:12px">
