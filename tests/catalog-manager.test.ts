@@ -33,9 +33,43 @@ vi.mock('../src/core/data/sqlite-http/client.js', () => ({
     async search(): Promise<Product[]> {
       return [...(contenido.get(this.source)?.values() ?? [])];
     }
+    async version(): Promise<string | undefined> {
+      return versiones.get(this.source);
+    }
+    async applyDelta(d: { header: { to: string } }): Promise<{ applied: number; reindexed: number }> {
+      aplicados.push(`${this.source}:${d.header.to}`);
+      versiones.set(this.source, d.header.to);
+      return { applied: 1, reindexed: 0 };
+    }
     async close(): Promise<void> {}
   },
 }));
+
+/** Version que finge tener cada catalogo en disco. */
+const versiones = new Map<string, string>();
+/** Deltas que se han llegado a aplicar, para comprobar el orden. */
+const aplicados: string[] = [];
+/** Deltas servidos por la red simulada. */
+const deltasServidos = new Map<string, unknown>();
+
+vi.mock('../src/core/data/sqlite-http/delta-sync.js', async (original) => {
+  const real = await original<typeof import('../src/core/data/sqlite-http/delta-sync.js')>();
+  return {
+    ...real,
+    // Solo se sustituye la descarga: `planSync` y `parseDelta` son los de
+    // verdad, que es justo lo que interesa ejercitar aqui.
+    fetchDelta: async (url: string) => {
+      const d = deltasServidos.get(url);
+      if (!d) throw new Error(`delta no publicado: ${url}`);
+      return d;
+    },
+  };
+});
+
+vi.mock('../src/core/data/idb.js', () => ({
+  invalidateCached: async (b: string[]) => void invalidados.push(...b),
+}));
+const invalidados: string[] = [];
 
 /** Lo que el Worker dice que hay REALMENTE en disco. */
 let enDisco: string[] = [];
@@ -74,6 +108,10 @@ beforeEach(() => {
   rotos.clear();
   aperturas.length = 0;
   almacen.clear();
+  versiones.clear();
+  aplicados.length = 0;
+  deltasServidos.clear();
+  invalidados.length = 0;
   enDisco = [];
   opfsDisponible = true;
 
@@ -192,6 +230,80 @@ describe('CatalogManager', () => {
 
     expect(m.get('venezuela')?.state).toBe('error');
     expect(aperturas).toEqual([]);
+  });
+
+  it('avisa de la actualizacion con el peso del delta, no el del catalogo', async () => {
+    enDisco = ['venezuela'];
+    versiones.set('venezuela', 'v1');
+    const idx = JSON.parse(JSON.stringify(indice));
+    idx.countries.venezuela.version = 'v2';
+    idx.countries.venezuela.deltas = [
+      { from: 'v1', to: 'v2', file: 'deltas/venezuela/v2.jsonl.gz', bytes: 1200, upserts: 3, deletes: 1 },
+    ];
+
+    const m = crear();
+    await m.init(idx as never);
+    await m.checkUpdates();
+
+    // 1 kB, no los 540 kB del catalogo: es el punto de toda la fase.
+    expect(m.get('venezuela')?.update?.cost).toContain('kB');
+    expect(m.get('venezuela')?.update?.cost).not.toContain('entero');
+  });
+
+  it('aplica los deltas en orden y deja de avisar', async () => {
+    enDisco = ['venezuela'];
+    versiones.set('venezuela', 'v1');
+    const idx = JSON.parse(JSON.stringify(indice));
+    idx.countries.venezuela.version = 'v3';
+    idx.countries.venezuela.deltas = [
+      { from: 'v1', to: 'v2', file: 'd/v2.gz', bytes: 900, upserts: 1, deletes: 0 },
+      { from: 'v2', to: 'v3', file: 'd/v3.gz', bytes: 900, upserts: 1, deletes: 1 },
+    ];
+    const cabecera = (from: string, to: string) => ({
+      header: { format: 1, country: 'venezuela', from, to, upserts: 1, deletes: 0, columns: ['barcode'] },
+      upserts: [{ op: 'u', fts: 0, barcode: `b-${to}` }],
+      deletes: [] as string[],
+    });
+    deltasServidos.set('https://ejemplo/data/d/v2.gz', cabecera('v1', 'v2'));
+    deltasServidos.set('https://ejemplo/data/d/v3.gz', cabecera('v2', 'v3'));
+
+    const m = crear();
+    await m.init(idx as never);
+    await m.checkUpdates();
+    await m.update('venezuela');
+
+    expect(aplicados).toEqual(['venezuela:v2', 'venezuela:v3']);
+    expect(m.get('venezuela')?.update).toBeUndefined();
+    expect(m.get('venezuela')?.state).toBe('ready');
+    // Sin invalidar el cache, el usuario no veria el cambio en 30 dias.
+    expect(invalidados).toEqual(['b-v2', 'b-v3']);
+  });
+
+  it('rechaza un delta que no encaja en la cadena, sin tocar la base', async () => {
+    enDisco = ['venezuela'];
+    versiones.set('venezuela', 'v1');
+    const idx = JSON.parse(JSON.stringify(indice));
+    idx.countries.venezuela.version = 'v2';
+    idx.countries.venezuela.deltas = [
+      { from: 'v1', to: 'v2', file: 'd/v2.gz', bytes: 900, upserts: 1, deletes: 0 },
+    ];
+    // El indice dice v1->v2 pero el archivo publicado dice venir de otra version.
+    deltasServidos.set('https://ejemplo/data/d/v2.gz', {
+      header: { format: 1, country: 'venezuela', from: 'vX', to: 'v2', upserts: 1, deletes: 0, columns: ['barcode'] },
+      upserts: [{ op: 'u', fts: 0, barcode: 'b1' }],
+      deletes: [],
+    });
+
+    const m = crear();
+    await m.init(idx as never);
+    await m.checkUpdates();
+    await m.update('venezuela');
+
+    expect(aplicados).toEqual([]);
+    expect(m.get('venezuela')?.state).toBe('ready');
+    expect(m.get('venezuela')?.problem?.title).toContain('No se ha podido actualizar');
+    // Lo importante: el catalogo que ya tenia sigue sirviendo.
+    expect(m.downloadedCountries).toEqual(['venezuela']);
   });
 
   it('borrar un catalogo no toca a los demas', async () => {

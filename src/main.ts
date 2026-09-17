@@ -589,30 +589,45 @@ function catalogRow(v: CatalogView): SafeHtml {
         <strong id="catalog-name-${v.country}">${v.label}</strong>
         <small>
           ${v.products.toLocaleString('es')} productos · ${mb(v.bytes)}
-          ${v.state === 'ready' ? html` · <span class="ok">guardado, funciona sin conexión</span>` : ''}
+          ${v.state === 'ready' && !v.update
+            ? html` · <span class="ok">guardado y al día, funciona sin conexión</span>`
+            : ''}
+          ${v.update ? html` · <span class="pendiente">${v.update.cost}</span>` : ''}
         </small>
       </div>
 
       <div class="catalog-actions">
-        ${v.state === 'downloading'
+        ${v.state === 'downloading' || v.state === 'updating'
           ? html`<button
               class="secondary compact"
               data-action="catalog-download"
               data-country="${v.country}"
               aria-disabled="true"
-              aria-label="Descargando el catálogo de ${v.label}"
+              aria-label="${v.state === 'updating' ? 'Actualizando' : 'Descargando'} el catálogo de ${v.label}"
             >
-              Descargando…
+              ${v.state === 'updating' ? 'Actualizando…' : 'Descargando…'}
             </button>`
           : v.state === 'ready'
-            ? html`<button
-                class="secondary compact"
-                data-action="catalog-remove"
-                data-country="${v.country}"
-                aria-label="Eliminar el catálogo de ${v.label}"
-              >
-                Eliminar
-              </button>`
+            ? html`
+                ${v.update
+                  ? html`<button
+                      class="primary compact"
+                      data-action="catalog-update"
+                      data-country="${v.country}"
+                      aria-label="Actualizar el catálogo de ${v.label}. ${v.update.cost}"
+                    >
+                      Actualizar
+                    </button>`
+                  : ''}
+                <button
+                  class="secondary compact"
+                  data-action="catalog-remove"
+                  data-country="${v.country}"
+                  aria-label="Eliminar el catálogo de ${v.label}"
+                >
+                  Eliminar
+                </button>
+              `
             : html`<button
                 class="primary compact"
                 data-action="catalog-download"
@@ -623,7 +638,7 @@ function catalogRow(v: CatalogView): SafeHtml {
               </button>`}
       </div>
 
-      ${v.state === 'downloading' && v.progress
+      ${(v.state === 'downloading' || v.state === 'updating') && v.progress
         ? html`
             <div class="catalog-progress">
               <div
@@ -989,6 +1004,11 @@ root.addEventListener('click', (event) => {
       if (country) void catalogs?.download(country);
       break;
     }
+    case 'catalog-update': {
+      const country = el.dataset['country'];
+      if (country) void catalogs?.update(country);
+      break;
+    }
     case 'catalog-remove': {
       const country = el.dataset['country'];
       if (country) void catalogs?.remove(country);
@@ -1132,6 +1152,10 @@ async function boot(): Promise<void> {
       state.catalogs = catalogs.list();
     }
     render();
+
+    // Despues de pintar: saber si hay actualizacion exige preguntar al Worker
+    // por la version de cada base, y eso no debe retrasar la primera pantalla.
+    void catalogs.checkUpdates();
   });
 
   if (code) void lookup(code);

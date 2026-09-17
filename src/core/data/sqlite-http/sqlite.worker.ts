@@ -67,7 +67,19 @@ export type WorkerRequest =
   /** Borra un catalogo del disco */
   | { id: number; type: 'remove'; source: string }
   /** Libera los manejadores de OPFS antes de que la pagina desaparezca */
-  | { id: number; type: 'pause' };
+  | { id: number; type: 'pause' }
+  /** Version de la copia local, para saber si hace falta actualizarla */
+  | { id: number; type: 'version'; source: string }
+  /** Aplica un delta sobre un catalogo ya descargado */
+  | {
+      id: number;
+      type: 'apply-delta';
+      source: string;
+      columns: string[];
+      upserts: Array<Record<string, unknown>>;
+      deletes: string[];
+      to: string;
+    };
 
 export type WorkerResponse =
   | { id: number; ok: true; result: unknown }
@@ -230,6 +242,119 @@ async function ensureOpen(source: string): Promise<void> {
   });
 }
 
+/** Version de la copia local. Deriva de `built_at` si la base es anterior. */
+function localVersion(conn: Connection): string | undefined {
+  const filas: Record<string, unknown>[] = [];
+  conn.db.exec({
+    sql: "SELECT key, value FROM meta WHERE key IN ('version','built_at')",
+    rowMode: 'object',
+    callback: (row: Record<string, unknown>) => {
+      filas.push(row);
+    },
+  });
+  const meta = new Map(filas.map((f) => [String(f['key']), String(f['value'])]));
+  const v = meta.get('version');
+  if (v) return v;
+  const built = meta.get('built_at');
+  // Mismo formato compacto que usa el pipeline, para que enganche con la cadena.
+  return built ? new Date(built).toISOString().replace(/[-:]/g, '').replace(/\.\d+Z$/, 'Z') : undefined;
+}
+
+/**
+ * Aplica un delta dentro de una sola transaccion.
+ *
+ * El punto delicado es el indice de texto. `products_fts` declara
+ * `barcode UNINDEXED`, asi que buscar por esa columna es un **escaneo
+ * completo**. Medido sobre el shard real de Espana (339.576 filas), para los
+ * 1.250 cambios de un dia de Estados Unidos:
+ *
+ *   DELETE ... WHERE barcode = ?  fila a fila   173 s
+ *   DELETE ... WHERE rowid   = ?  fila a fila     8,6 s
+ *   por lotes, una sola pasada                    164 ms
+ *
+ * De ahi la tabla temporal: se acumulan los codigos tocados y se hace UNA
+ * pasada de borrado y otra de reinsercion para todo el delta junto. Los
+ * disparadores SQL que se plantearon al principio habrian hecho justo lo
+ * primero: tres minutos de bloqueo por actualizacion.
+ *
+ * Ademas solo entran en la tabla temporal las filas cuyo `name` o `brands`
+ * cambiaron de verdad (`fts`), que son la minoria: si no cambio ninguna, el
+ * indice no se toca.
+ */
+function applyDelta(
+  conn: Connection,
+  columns: string[],
+  upserts: Array<Record<string, unknown>>,
+  deletes: string[],
+  to: string,
+): { applied: number; reindexed: number } {
+  // Solo las columnas que esta base tiene de verdad: un cliente con un catalogo
+  // viejo no debe romperse porque el pipeline anadiera una columna.
+  const cols = columns.filter((c) => conn.columns.has(c));
+  if (!cols.includes('barcode')) throw new Error('El delta no trae el codigo de barras');
+
+  const tocados = upserts.filter((u) => u['fts'] === 1).map((u) => u);
+  const hayFts = tocados.length > 0 || deletes.length > 0;
+
+  conn.db.exec({ sql: 'BEGIN IMMEDIATE' });
+  try {
+    const insert = `INSERT OR REPLACE INTO products (${cols.join(',')}) VALUES (${cols.map(() => '?').join(',')})`;
+    for (const fila of upserts) {
+      conn.db.exec({ sql: insert, bind: cols.map((c) => fila[c] ?? null) });
+    }
+    for (const barcode of deletes) {
+      conn.db.exec({ sql: 'DELETE FROM products WHERE barcode = ?', bind: [barcode] });
+    }
+
+    if (hayFts) {
+      conn.db.exec({
+        sql: 'CREATE TEMP TABLE tocados (barcode TEXT PRIMARY KEY, name TEXT, brands TEXT, alta INTEGER)',
+      });
+      for (const fila of tocados) {
+        conn.db.exec({
+          sql: 'INSERT OR REPLACE INTO tocados VALUES (?,?,?,1)',
+          bind: [fila['barcode'], fila['name'] ?? null, fila['brands'] ?? ''],
+        });
+      }
+      for (const barcode of deletes) {
+        conn.db.exec({
+          sql: 'INSERT OR REPLACE INTO tocados VALUES (?,NULL,NULL,0)',
+          bind: [barcode],
+        });
+      }
+      // Una sola pasada de borrado y otra de alta, para todo el delta junto.
+      conn.db.exec({ sql: 'DELETE FROM products_fts WHERE barcode IN (SELECT barcode FROM tocados)' });
+      conn.db.exec({
+        sql: `INSERT INTO products_fts (barcode, name, brands)
+              SELECT barcode, name, COALESCE(brands, '') FROM tocados
+              WHERE alta = 1 AND name IS NOT NULL`,
+      });
+      conn.db.exec({ sql: 'DROP TABLE tocados' });
+    }
+
+    conn.db.exec({
+      sql: "INSERT OR REPLACE INTO meta (key, value) VALUES ('version', ?)",
+      bind: [to],
+    });
+    conn.db.exec({
+      sql: "INSERT OR REPLACE INTO meta (key, value) VALUES ('built_at', ?)",
+      bind: [new Date().toISOString()],
+    });
+    conn.db.exec({ sql: 'COMMIT' });
+  } catch (err) {
+    // Sin esto la base se quedaria a medio delta: ni en la version vieja ni en
+    // la nueva, y la siguiente comparacion la creeria al dia.
+    try {
+      conn.db.exec({ sql: 'ROLLBACK' });
+    } catch {
+      /* si la transaccion ya se cerro, da igual */
+    }
+    throw err;
+  }
+
+  return { applied: upserts.length + deletes.length, reindexed: tocados.length };
+}
+
 /** Nombre con el que el catalogo vive dentro del pool de OPFS. */
 const catalogFileName = (source: string) => `${source}.sqlite3`;
 
@@ -317,6 +442,26 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
           result: getReaderStats(msg.source ? fileNameFor(msg.source) : undefined) ?? null,
         });
         break;
+      case 'version': {
+        await ensureOpen(msg.source);
+        const conn = connections.get(msg.source);
+        reply({ id: msg.id, ok: true, result: conn ? (localVersion(conn) ?? null) : null });
+        break;
+      }
+      case 'apply-delta': {
+        await ensureOpen(msg.source);
+        const conn = connections.get(msg.source);
+        if (!conn) throw new Error(`La fuente "${msg.source}" no esta abierta`);
+        // Un catalogo por rangos es de solo lectura: vive en el servidor.
+        if (conn.strategy !== 'download') {
+          throw new Error('Solo se pueden actualizar los catalogos descargados');
+        }
+        const r = applyDelta(conn, msg.columns, msg.upserts, msg.deletes, msg.to);
+        // El delta pudo traer columnas que esta base no tenia.
+        conn.columns = readColumns(conn.db);
+        reply({ id: msg.id, ok: true, result: r });
+        break;
+      }
       case 'close':
         closeConnection(msg.source);
         reply({ id: msg.id, ok: true, result: null });

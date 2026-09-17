@@ -99,6 +99,47 @@ Dentro de L1/L2 el orden por país lo decide `snapshotPriority()`: primero los d
 en su orden, y después el que sugiere el prefijo GS1 del código. Lo que el usuario tiene
 en disco manda sobre la deducción.
 
+### Actualización incremental de L1
+
+Un catálogo guardado se queda viejo en cuanto el pipeline reconstruye. Volver a bajarlo
+entero cuesta 76,6 MB en España; **el delta de un día son 25,0 kB medidos** sobre un cambio
+real de 315 productos y 4 bajas: **3.100 veces menos**. Aplicarlo sobre las 340.000 filas
+tarda **322 ms**.
+
+**Los deltas NO son los que publica Open Food Facts.** El plan original era consumir
+`static.openfoodfacts.org/data/delta/`, pero medido sobre dos de esos archivos separados
+doce días, el campo `nutriments` viene **vacío en el 100 % de los registros** (1.153 de
+5.734 lo traen como objeto vacío, ninguno con valores), frente al 62 % relleno en el
+volcado completo. Aplicarlos borraría energía, azúcares, grasas y sal de cada producto
+actualizado: dejaría el catálogo peor que antes.
+
+Así que `scripts/build-delta.mjs` los calcula comparando dos generaciones de nuestro propio
+snapshot. Sale más barato de lo que parece —el volcado hay que recorrerlo igualmente cada
+noche— y además:
+
+- lleva **todas** nuestras columnas, no un subconjunto ajeno;
+- detecta las **bajas reales**, que los deltas de OFF no marcan y obligaban a la
+  reconstrucción semanal que preveía el plan;
+- es exacto por construcción, y el pipeline lo **demuestra al publicar**: `--verify` aplica
+  cada delta sobre una copia del snapshot anterior y compara fila a fila con el nuevo. Si
+  no coincide, aborta. Comprobado que detecta un delta manipulado: 250 filas distintas y
+  salida 1.
+
+Encadenado por versión (`meta.version`, marca de tiempo compacta UTC). El cliente compara
+la suya con la del índice y `planSync()` decide: al día, cadena de deltas, o descarga
+completa si falta un eslabón, si cambió el esquema o si lo acumulado supera el 35 % del
+catálogo.
+
+Dos detalles que solo aparecieron probándolo de extremo a extremo:
+
+- **El índice de texto se toca una sola vez por delta.** `products_fts` declara
+  `barcode UNINDEXED`, así que buscar por esa columna es un escaneo completo: fila a fila
+  serían 173 s para un día de Estados Unidos, por lotes son 164 ms. Y solo entran las filas
+  cuyo `name` o `brands` cambiaron de verdad (`fts: 1` en el delta).
+- **Hay que invalidar L0.** El caché de productos ya vistos es la primera capa que consulta
+  `lookup()`: sin borrar de ahí los códigos que tocó el delta, el usuario no vería el
+  cambio hasta 30 días después. Se borran exactamente los que vienen en el archivo.
+
 ### Un único Worker, por obligación
 La documentación del VFS `opfs-sahpool` es explícita: *"only one instance of this VFS can
 use the same directory concurrently"*. Todo el acceso a OPFS pasa por un solo Worker

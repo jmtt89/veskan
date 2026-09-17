@@ -17,10 +17,29 @@
  *                         no se puede descargar entera.
  */
 
+/** Un eslabon de la cadena de actualizaciones incrementales. */
+export interface SnapshotDelta {
+  /** Version de la base a la que se le puede aplicar */
+  from: string;
+  /** Version que resulta de aplicarlo */
+  to: string;
+  file: string;
+  bytes: number;
+  upserts: number;
+  deletes: number;
+}
+
 export interface SnapshotCountryEntry {
   file: string;
   products: number;
   bytes: number;
+  /**
+   * Version del catalogo publicado. Falta en los indices anteriores a las
+   * actualizaciones incrementales, y entonces no hay cadena que seguir.
+   */
+  version?: string;
+  /** Cadena de deltas disponibles, del mas viejo al mas nuevo */
+  deltas?: SnapshotDelta[];
 }
 
 export interface SnapshotIndex {

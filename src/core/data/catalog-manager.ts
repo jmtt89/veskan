@@ -21,9 +21,11 @@
  */
 
 import type { Product } from '../types.js';
+import { invalidateCached } from './idb.js';
 import { snapshotPriority } from '../scanner/gs1.js';
 import { SqliteHttpSource } from './sqlite-http/client.js';
 import { COUNTRY_LABELS, type SnapshotIndex } from './sqlite-http/snapshot-index.js';
+import { fetchDelta, planSync, syncCost, type SyncPlan } from './sqlite-http/delta-sync.js';
 import {
   classifyEviction,
   detectIosWebkit,
@@ -43,6 +45,8 @@ export type CatalogState =
   | 'downloading'
   /** En disco. Funciona sin conexion. */
   | 'ready'
+  /** En disco, aplicando un delta encima */
+  | 'updating'
   | 'error';
 
 export interface CatalogView {
@@ -56,6 +60,8 @@ export interface CatalogView {
   problem?: UserMessage;
   /** Advertencia que no impide descargar, p.ej. el borrado a los 7 dias */
   warning?: string;
+  /** Hay una version mas nueva publicada, y lo que costaria ponerse al dia */
+  update?: { plan: SyncPlan; cost: string };
 }
 
 interface Capabilities {
@@ -164,10 +170,14 @@ export class CatalogManager {
   // Descarga y borrado
   // -------------------------------------------------------------------------
 
-  async download(country: string): Promise<void> {
+  async download(country: string, opts: { force?: boolean } = {}): Promise<void> {
     const view = this.states.get(country);
     const entry = this.index?.countries[country];
     if (!view || !entry) return;
+
+    // Al reemplazar una copia vieja hay que borrar la de disco primero: si no,
+    // el Worker la encuentra ya presente y se salta la descarga.
+    if (opts.force) await this.remove(country);
 
     // Comprobar ANTES de empezar, no a mitad: el criterio es avisar, no
     // degradar en silencio ni fallar a medio camino.
@@ -210,9 +220,13 @@ export class CatalogManager {
 
       view.state = 'ready';
       view.progress = undefined;
+      view.update = undefined;
       view.warning = avisoCuota ?? this.evictionNote();
       if (!this.downloaded.includes(country)) this.downloaded.push(country);
       this.remember();
+      // Lo recien bajado es, por definicion, la version publicada; pero se
+      // comprueba igual por si el indice cambio durante la descarga.
+      void this.checkUpdate(country);
     } catch (err) {
       view.state = 'error';
       view.progress = undefined;
@@ -238,6 +252,117 @@ export class CatalogManager {
     view.state = 'absent';
     view.problem = undefined;
     view.progress = undefined;
+    this.opts.onChange(country);
+  }
+
+  // -------------------------------------------------------------------------
+  // Actualizacion incremental
+  // -------------------------------------------------------------------------
+
+  /**
+   * Mira si los catalogos guardados se han quedado viejos.
+   *
+   * No actualiza: solo deja escrito en la vista lo que costaria, para que el
+   * usuario decida. Bajar megas sin pedirlo seria abusivo, y aqui ademas hay un
+   * motivo tecnico: aplicar un delta escribe sobre la base, y hacerlo justo
+   * mientras alguien escanea alargaria la consulta sin necesidad.
+   */
+  async checkUpdates(): Promise<void> {
+    await Promise.all(this.downloaded.map((c) => this.checkUpdate(c)));
+  }
+
+  /**
+   * Revisa un solo pais.
+   *
+   * Tiene que llamarse tambien DESPUES de descargar: si no, el aviso calculado
+   * para la copia anterior se queda pegado a una copia que ya esta al dia, y el
+   * usuario ve "actualizacion disponible" sobre lo que acaba de bajar.
+   */
+  private async checkUpdate(country: string): Promise<void> {
+    const view = this.states.get(country);
+    const entry = this.index?.countries[country];
+    if (!view || !entry || view.state !== 'ready') return;
+    const antes = view.update?.cost;
+    try {
+      const plan = planSync(await this.sources.get(country)?.version(), entry);
+      const cost = syncCost(plan, entry);
+      view.update = cost ? { plan, cost } : undefined;
+    } catch {
+      // Si no se puede saber, no se inventa un aviso: se quita el que hubiera.
+      view.update = undefined;
+    }
+    if (view.update?.cost !== antes) this.opts.onChange(country);
+  }
+
+  /**
+   * Pone al dia un catalogo.
+   *
+   * Si hay cadena de deltas se aplican en orden; si no la hay -- porque la copia
+   * local es mas vieja que el historial publicado, o porque cambio el esquema --
+   * se vuelve a descargar entero. La decision la toma `planSync`, que es pura y
+   * esta probada aparte.
+   */
+  async update(country: string): Promise<void> {
+    const view = this.states.get(country);
+    const entry = this.index?.countries[country];
+    if (!view || !entry || view.state !== 'ready') return;
+
+    const plan = view.update?.plan ?? planSync(await this.sources.get(country)?.version(), entry);
+    if (plan.kind === 'up-to-date') {
+      view.update = undefined;
+      this.opts.onChange(country);
+      return;
+    }
+    if (plan.kind === 'full') {
+      view.update = undefined;
+      await this.download(country, { force: true });
+      return;
+    }
+
+    view.state = 'updating';
+    view.progress = { loaded: 0, total: plan.bytes };
+    this.opts.onChange(country);
+
+    try {
+      const source = this.sources.get(country);
+      if (!source) throw new Error('El catálogo no está abierto');
+      let bajado = 0;
+      for (const paso of plan.chain) {
+        const delta = await fetchDelta(`${this.opts.baseUrl}/${paso.file}`);
+        // Se comprueba el eslabon ANTES de tocar la base: un indice mal
+        // publicado no debe poder mezclar el delta de un pais con otro, ni
+        // saltarse un dia dejando la base en una version que no existe.
+        if (delta.header.country !== country || delta.header.from !== paso.from) {
+          throw new Error('El delta descargado no corresponde a este catálogo');
+        }
+        await source.applyDelta(delta);
+        // El cache de productos ya vistos es la PRIMERA capa que se consulta:
+        // si no se invalida, el usuario no veria el cambio hasta 30 dias
+        // despues, cuando caduque. Solo se borra lo que el delta toco.
+        await invalidateCached([
+          ...delta.upserts.map((u) => String(u['barcode'])),
+          ...delta.deletes,
+        ]);
+        bajado += paso.bytes;
+        view.progress = { loaded: bajado, total: plan.bytes };
+        this.opts.onChange(country);
+      }
+      view.state = 'ready';
+      view.progress = undefined;
+      view.update = undefined;
+      view.problem = undefined;
+    } catch (err) {
+      // La base sigue en su version anterior: `applyDelta` va en transaccion y
+      // deshace si falla. Asi que esto NO deja el catalogo inservible.
+      view.state = 'ready';
+      view.progress = undefined;
+      view.problem = {
+        title: 'No se ha podido actualizar',
+        body:
+          `${err instanceof Error ? err.message : 'Error desconocido'}. El catálogo que tienes ` +
+          'sigue funcionando; puedes volver a intentarlo.',
+      };
+    }
     this.opts.onChange(country);
   }
 

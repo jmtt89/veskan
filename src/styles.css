@@ -779,3 +779,15 @@ details summary {
     transition: none;
   }
 }
+
+/* Coste de una actualizacion pendiente, en la fila del catalogo. */
+.catalog-info .pendiente {
+  color: var(--accent-fg);
+  font-weight: 600;
+}
+
+/* Dos botones en la misma fila cuando hay actualizacion pendiente. */
+.catalog-actions {
+  display: flex;
+  gap: 8px;
+}

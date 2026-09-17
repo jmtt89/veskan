@@ -10,6 +10,7 @@
 import type { Product } from '../../types.js';
 import type { OpenStrategy } from './sqlite.worker.js';
 import { send, type ProgressHandler } from './worker-pool.js';
+import type { DeltaFile } from './delta-sync.js';
 
 export interface SqliteHttpOptions {
   /** Nombre logico, normalmente el pais. Identifica la conexion en el Worker. */
@@ -114,6 +115,33 @@ export class SqliteHttpSource {
   async stats(): Promise<ReaderStats | null> {
     await this.init();
     return send<ReaderStats | null>({ type: 'stats', source: this.opts.source });
+  }
+
+  /** Version de la copia local, o `undefined` si la base no la declara. */
+  async version(): Promise<string | undefined> {
+    await this.init();
+    return (await send<string | null>({ type: 'version', source: this.opts.source })) ?? undefined;
+  }
+
+  /**
+   * Aplica un delta sobre la copia local.
+   *
+   * El margen es generoso: sobre un catalogo grande, reconstruir las entradas
+   * del indice de texto es lo que manda, no el numero de filas.
+   */
+  async applyDelta(delta: DeltaFile): Promise<{ applied: number; reindexed: number }> {
+    await this.init();
+    return send<{ applied: number; reindexed: number }>(
+      {
+        type: 'apply-delta',
+        source: this.opts.source,
+        columns: delta.header.columns,
+        upserts: delta.upserts,
+        deletes: delta.deletes,
+        to: delta.header.to,
+      },
+      { timeout: 120_000 },
+    );
   }
 
   /** Cierra esta conexion. El Worker sigue vivo para las demas fuentes. */

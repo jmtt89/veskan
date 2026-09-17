@@ -85,6 +85,19 @@ export async function putCachedProduct(product: Product): Promise<void> {
   await db.products.put({ ...product, cachedAt: Date.now() });
 }
 
+/**
+ * Invalida del cache los productos que acaba de cambiar un delta.
+ *
+ * Sin esto, actualizar el catalogo no se nota: el cache de productos ya vistos
+ * es la primera capa que consulta `lookup()`, asi que seguiria devolviendo la
+ * version anterior hasta que caducara, 30 dias despues. Se borran solo los
+ * codigos que el delta toco, que vienen en el propio archivo.
+ */
+export async function invalidateCached(barcodes: string[]): Promise<void> {
+  if (barcodes.length === 0) return;
+  await db.products.bulkDelete(barcodes);
+}
+
 export async function addHistory(entry: Omit<HistoryEntry, 'id'>): Promise<void> {
   // Un reescaneo del mismo producto actualiza la entrada en vez de duplicarla.
   const existing = await db.history.where('barcode').equals(entry.barcode).first();
