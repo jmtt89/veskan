@@ -95,6 +95,26 @@ export function send<T = unknown>(
   });
 }
 
+/**
+ * Libera los manejadores de OPFS cuando la pagina se va.
+ *
+ * `pagehide` y no `beforeunload` porque es el unico que dispara de forma fiable
+ * en movil, donde la pagina se descarta sin avisar. Sin esto, la siguiente
+ * carga encuentra los manejadores retenidos por este contexto y el catalogo
+ * queda inaccesible uno o dos segundos.
+ */
+if (typeof addEventListener === 'function') {
+  addEventListener('pagehide', () => {
+    if (!worker) return;
+    // No se puede esperar: la pagina ya se esta yendo. Se envia y punto.
+    try {
+      worker.postMessage({ type: 'pause', id: nextId++ } satisfies WorkerRequest);
+    } catch {
+      /* el worker ya podria estar muerto */
+    }
+  });
+}
+
 /** Fuentes abiertas ahora mismo en el Worker. */
 export function openSources(): Promise<string[]> {
   return send<string[]>({ type: 'list' });

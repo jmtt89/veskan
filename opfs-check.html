@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" /><meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Diagnóstico de OPFS</title>
+    <link rel="stylesheet" href="/src/styles.css" />
+  </head>
+  <body>
+    <main style="max-width:680px;margin:0 auto;padding:16px">
+      <h1 style="font-size:1.1rem">Diagnóstico del almacén en disco</h1>
+      <p style="font-size:.88rem;color:var(--text-dim)">
+        Comprueba que el catálogo descargado queda como un archivo SQLite real sobre el
+        disco, que sobrevive a recargar la página y que se consulta sin red.
+      </p>
+      <div id="out"></div>
+    </main>
+    <script type="module" src="/src/dev/opfs-check.ts"></script>
+  </body>
+</html>

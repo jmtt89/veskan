@@ -13,6 +13,7 @@ export default defineConfig({
         main: 'index.html',
         'vfs-check': 'vfs-check.html',
         'scanner-check': 'scanner-check.html',
+        'opfs-check': 'opfs-check.html',
       },
       output: {
         manualChunks(id) {
@@ -48,7 +49,7 @@ export default defineConfig({
         navigateFallback: 'index.html',
         // Sin esto, el Service Worker devuelve index.html para /vfs-check.html
         // y el banco de pruebas nunca llega a ejecutarse.
-        navigateFallbackDenylist: [/^\/vfs-check/, /^\/scanner-check/],
+        navigateFallbackDenylist: [/^\/vfs-check/, /^\/scanner-check/, /^\/opfs-check/],
         maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
         runtimeCaching: [
           {

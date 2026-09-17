@@ -18,7 +18,16 @@
 
 import sqlite3InitModule from '@sqlite.org/sqlite-wasm';
 import { installHttpVfs, VFS_NAME, warmup, getReaderStats, unregisterFile } from './http-vfs.js';
-import { getCached, putCached } from './blob-cache.js';
+import {
+  ensurePool,
+  importCatalog,
+  listCatalogs,
+  openCatalog,
+  opfsLooksAvailable,
+  OpfsUnavailableError,
+  pausePool,
+  removeCatalog,
+} from './opfs-store.js';
 
 type Sqlite3 = Awaited<ReturnType<typeof sqlite3InitModule>>;
 
@@ -52,7 +61,13 @@ export type WorkerRequest =
   | { id: number; type: 'get'; source: string; sql: string; params?: unknown[] }
   | { id: number; type: 'stats'; source?: string }
   | { id: number; type: 'close'; source: string }
-  | { id: number; type: 'list' };
+  | { id: number; type: 'list' }
+  /** Que puede hacer este navegador: OPFS disponible, catalogos ya en disco */
+  | { id: number; type: 'capabilities' }
+  /** Borra un catalogo del disco */
+  | { id: number; type: 'remove'; source: string }
+  /** Libera los manejadores de OPFS antes de que la pagina desaparezca */
+  | { id: number; type: 'pause' };
 
 export type WorkerResponse =
   | { id: number; ok: true; result: unknown }
@@ -167,86 +182,35 @@ async function openWithRange(
 }
 
 /**
- * Descarga el archivo entero y lo abre.
+ * Descarga el catalogo y lo guarda en OPFS.
  *
- * Merece la pena cuando la base es pequena: un SQLite comprime ~65% por la red,
- * asi que la de Venezuela son ~0,1 MB, menos que una consulta por rangos. Y a
- * diferencia de los rangos, una vez guardada funciona sin conexion.
+ * A diferencia de la version anterior, que lo metia en IndexedDB como un blob y
+ * lo cargaba entero a memoria con `deserialize`, aqui queda como un **archivo
+ * SQLite real en disco**: SQLite lo lee y escribe por paginas de 4 kB, sin que
+ * la memoria dependa del tamano del catalogo. Es lo que permite despues
+ * mantenerlo al dia con deltas diminutos en vez de volver a bajarlo entero.
  */
-async function openWithDownload(source: string, url: string, id: number, generatedAt?: string) {
+async function openWithDownload(source: string, url: string, id: number) {
   const api = await ensureSqlite();
-  const file = fileNameFor(source);
+  const pool = await ensurePool(api, 4);
 
-  let bytes: Uint8Array | undefined;
-  const cached = await getCached(source);
-  // Solo se reutiliza si el indice no ha publicado una version mas nueva.
-  if (cached && (!generatedAt || cached.generatedAt === generatedAt)) {
-    bytes = new Uint8Array(cached.bytes);
-  }
-
-  if (!bytes) {
+  // Si ya esta en disco, no se vuelve a bajar. Quien decide si hay que
+  // actualizarlo es el cliente, comparando versiones.
+  if (!listCatalogs(pool).includes(source)) {
     const res = await fetch(url);
-    if (!res.ok) throw new Error(`No se pudo descargar el snapshot (HTTP ${res.status})`);
-    const total = Number(res.headers.get('Content-Length') ?? 0);
-
-    if (res.body && total > 0) {
-      // Lectura por trozos para poder informar del progreso: en una conexion
-      // lenta, una barra es muy distinto de un spinner que no dice nada.
-      const reader = res.body.getReader();
-      const chunks: Uint8Array[] = [];
-      let loaded = 0;
-      for (;;) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        chunks.push(value);
-        loaded += value.length;
-        self.postMessage({ id, progress: { loaded, total } } satisfies WorkerResponse);
-      }
-      bytes = new Uint8Array(loaded);
-      let offset = 0;
-      for (const c of chunks) {
-        bytes.set(c, offset);
-        offset += c.length;
-      }
-    } else {
-      bytes = new Uint8Array(await res.arrayBuffer());
-    }
-
-    await putCached({
-      key: source,
-      bytes: bytes.buffer.slice(0) as ArrayBuffer,
-      generatedAt: generatedAt ?? '',
-      storedAt: Date.now(),
+    await importCatalog(pool, source, res, (loaded, total) => {
+      self.postMessage({ id, progress: { loaded, total } } satisfies WorkerResponse);
     });
   }
 
-  const capi = (api as unknown as { capi: Record<string, never> }).capi;
-  const wasm = (api as unknown as {
-    wasm: { allocFromTypedArray(a: Uint8Array): number };
-  }).wasm;
-  const oo1 = (api as unknown as { oo1: { DB: new () => { pointer: number } } }).oo1;
-
-  const db = new oo1.DB() as unknown as {
-    pointer: number;
-    exec: (opts: unknown) => unknown;
-    close: () => void;
-  };
-  const ptr = wasm.allocFromTypedArray(bytes);
-  const deserialize = capi['sqlite3_deserialize'] as unknown as (
-    db: number, schema: string, p: number, sz: number, cap: number, flags: number,
-  ) => number;
-  const FREEONCLOSE = capi['SQLITE_DESERIALIZE_FREEONCLOSE'] as unknown as number;
-  const RESIZEABLE = capi['SQLITE_DESERIALIZE_RESIZEABLE'] as unknown as number;
-  const rc = deserialize(db.pointer, 'main', ptr, bytes.length, bytes.length, FREEONCLOSE | RESIZEABLE);
-  if (rc !== 0) throw new Error(`sqlite3_deserialize fallo con codigo ${rc}`);
-
+  const db = openCatalog(pool, source);
   const columns = readColumns(db);
-  connections.set(source, { db, strategy: 'download', file, columns });
-  return {
-    ok: true as const, strategy: 'download' as const, source,
-    bytes: bytes.length, columns: [...columns],
-  };
+  connections.set(source, { db, strategy: 'download', file: catalogFileName(source), columns });
+  return { ok: true as const, strategy: 'download' as const, source, columns: [...columns] };
 }
+
+/** Nombre con el que el catalogo vive dentro del pool de OPFS. */
+const catalogFileName = (source: string) => `${source}.sqlite3`;
 
 function query(source: string, sql: string, params?: unknown[]): Record<string, unknown>[] {
   const conn = connections.get(source);
@@ -306,7 +270,7 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
         closeConnection(msg.source);
         const result =
           msg.strategy === 'download'
-            ? await openWithDownload(msg.source, msg.url, msg.id, msg.generatedAt)
+            ? await openWithDownload(msg.source, msg.url, msg.id)
             : await openWithRange(msg.source, msg.url, msg.blockSize, msg.maxBlocks);
         reply({ id: msg.id, ok: true, result });
         break;
@@ -336,6 +300,43 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
       case 'list':
         reply({ id: msg.id, ok: true, result: [...connections.keys()] });
         break;
+      case 'capabilities': {
+        // Se consulta ANTES de ofrecer la descarga, para poder explicar por que
+        // no se puede en lugar de fallar a mitad.
+        if (!opfsLooksAvailable()) {
+          reply({
+            id: msg.id, ok: true,
+            result: { opfs: false, reason: 'no-api', catalogs: [] },
+          });
+          break;
+        }
+        try {
+          const api = await ensureSqlite();
+          const pool = await ensurePool(api, 4);
+          reply({
+            id: msg.id, ok: true,
+            result: { opfs: true, catalogs: listCatalogs(pool) },
+          });
+        } catch (err) {
+          const reason = err instanceof OpfsUnavailableError ? err.reason : 'unknown';
+          reply({
+            id: msg.id, ok: true,
+            result: { opfs: false, reason, detail: (err as Error).message, catalogs: [] },
+          });
+        }
+        break;
+      }
+      case 'pause':
+        await pausePool();
+        reply({ id: msg.id, ok: true, result: null });
+        break;
+      case 'remove': {
+        closeConnection(msg.source);
+        const api = await ensureSqlite();
+        const pool = await ensurePool(api, 4);
+        reply({ id: msg.id, ok: true, result: { removed: removeCatalog(pool, msg.source) } });
+        break;
+      }
     }
   } catch (err) {
     reply({ id: msg.id, ok: false, error: err instanceof Error ? err.message : String(err) });
