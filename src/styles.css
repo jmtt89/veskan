@@ -2113,29 +2113,60 @@ button.link,
   color: var(--ink-2);
 }
 
-.sheet button + button {
+/*
+ * Solo los botones APILADOS de la hoja, en hijos directos.
+ *
+ * Sin el `>`, la regla alcanzaba a las teclas del teclado numerico: cada una
+ * sumaba 8px de margen y la fila del grid crecia a 60px, pero el «1» -- que no
+ * va detras de otro boton -- no lo llevaba y se estiraba a esos 60px. De ahi
+ * que se viera mas grande que las demas.
+ */
+.sheet > button + button {
   margin-top: 8px;
 }
 
-.manual-display {
+.manual-field {
   display: flex;
   align-items: center;
+  gap: 8px;
   min-height: 56px;
-  padding: 0 14px;
+  padding: 0 8px 0 14px;
   border-radius: 14px;
   border: 1px solid var(--border);
   background: var(--bg-1);
+}
+
+.manual-field:focus-within {
+  border-color: var(--brand-fg);
+}
+
+.manual-field input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: none;
+  color: var(--ink);
   font: 1.5rem/1 var(--font-num);
   letter-spacing: 0.08em;
-  color: var(--ink);
+  outline: none;
 }
 
-.manual-display.bad {
-  border-color: var(--danger-fg);
-}
-
-.manual-display .ph {
+.manual-field input::placeholder {
   color: var(--border-strong);
+}
+
+/* «Pegar» va al final del campo, que es donde se busca: junto a lo que se va a
+   pegar. Al lado del cero, con un glifo, nadie entendia para que era. */
+.paste-btn {
+  flex: none;
+  min-height: 40px;
+  padding: 0 14px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--bg-2);
+  color: var(--ink);
+  font: 600 0.84rem var(--font);
+  cursor: pointer;
 }
 
 .manual-hint {
@@ -2166,6 +2197,11 @@ button.link,
 .key.fn {
   background: var(--bg-1);
   font-size: 1.13rem;
+}
+
+/* Abajo a la izquierda no hay tecla, como en el teclado numerico de iOS. */
+.key.hueco {
+  background: none;
 }
 
 .sheet .primary {

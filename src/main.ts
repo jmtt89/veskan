@@ -313,23 +313,26 @@ function toastEl(): SafeHtml {
  * aqui no valen. Con uno propio, las teclas caen en la zona del pulgar y el
  * campo valida a medida que se escribe.
  */
+/**
+ * Hoja para escribir el codigo a mano.
+ *
+ * El campo es un `<input>` de verdad y no un recuadro pintado: asi funcionan el
+ * teclado fisico del ordenador y el pegado (Ctrl+V, o la pulsacion larga en el
+ * movil). `inputmode="none"` evita que ademas salte el teclado del sistema en
+ * el movil, que taparia el nuestro y ofreceria letras que aqui no valen.
+ */
 function manualSheet(): SafeHtml {
   if (!state.manualOpen) return raw('');
   const codigo = state.manualCode;
-  const valido = isValidEan(codigo);
-  const pista = !codigo
-    ? 'EAN-8, UPC o EAN-13. Está bajo las barras.'
-    : valido
-      ? `${codigo.length} dígitos · listo`
-      : codigo.length >= 13
-        ? `${codigo.length} dígitos · el dígito de control no cuadra`
-        : `${codigo.length} dígitos`;
 
+  // El teclado propio ocupa la zona del pulgar; el hueco de abajo a la
+  // izquierda queda vacio y el borrado a la DERECHA del cero, que es donde lo
+  // ponen el teclado numerico de iOS y los marcadores de telefono.
   const teclas = [...'123456789'].map((d) => ({ label: d, aria: d, cls: 'num' }));
   teclas.push(
-    { label: '⌫', aria: 'Borrar', cls: 'fn' },
+    { label: '', aria: '', cls: 'hueco' },
     { label: '0', aria: '0', cls: 'num' },
-    { label: '⎘', aria: 'Pegar del portapapeles', cls: 'fn' },
+    { label: '⌫', aria: 'Borrar el último dígito', cls: 'fn' },
   );
 
   return html`
@@ -337,27 +340,62 @@ function manualSheet(): SafeHtml {
     <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="manual-h">
       <div class="sheet-grip" aria-hidden="true"></div>
       <h2 id="manual-h">Escribe el código de barras</h2>
-      <div class="manual-display ${codigo && !valido && codigo.length >= 13 ? 'bad' : ''}">
-        ${codigo ? codigo : raw('<span class="ph">·············</span>')}
+
+      <div class="manual-field">
+        <input
+          id="manual-input"
+          type="text"
+          inputmode="none"
+          autocomplete="off"
+          autocapitalize="off"
+          spellcheck="false"
+          maxlength="13"
+          aria-label="Código de barras"
+          aria-describedby="manual-hint"
+          value="${codigo}"
+        />
+        <button class="paste-btn" data-action="paste">Pegar</button>
       </div>
-      <div class="manual-hint" aria-live="polite">${pista}</div>
+      <div class="manual-hint" id="manual-hint" aria-live="polite">${manualHint(codigo)}</div>
+
       <div class="keypad">
-        ${teclas.map(
-          (k) => html`<button
-            class="key ${k.cls}"
-            data-action="key"
-            data-key="${k.label}"
-            aria-label="${k.aria}"
-          >
-            ${k.label}
-          </button>`,
+        ${teclas.map((k) =>
+          k.cls === 'hueco'
+            ? html`<span class="key hueco" aria-hidden="true"></span>`
+            : html`<button class="key ${k.cls}" data-action="key" data-key="${k.label}" aria-label="${k.aria}">
+                ${k.label}
+              </button>`,
         )}
       </div>
-      <button class="primary" data-action="manual-lookup" ${raw(valido ? '' : 'disabled')}>
+
+      <button class="primary" data-action="manual-lookup" ${raw(isValidEan(codigo) ? '' : 'disabled')}>
         Buscar
       </button>
     </div>
   `;
+}
+
+/** Texto de ayuda bajo el campo. Cambia mientras se escribe. */
+function manualHint(codigo: string): string {
+  if (!codigo) return 'EAN-8, UPC o EAN-13. Está bajo las barras.';
+  if (isValidEan(codigo)) return `${codigo.length} dígitos · listo`;
+  if (codigo.length >= 13) return `${codigo.length} dígitos · el dígito de control no cuadra`;
+  return `${codigo.length} dígitos`;
+}
+
+/**
+ * Refresca la hoja SIN volver a renderizar.
+ *
+ * Un `render()` reconstruye el DOM y el campo perderia el foco y el cursor en
+ * cada pulsacion, que es justo lo que rompe escribir con el teclado fisico.
+ */
+function syncManual(): void {
+  const input = document.getElementById('manual-input') as HTMLInputElement | null;
+  if (input && input.value !== state.manualCode) input.value = state.manualCode;
+  const hint = document.getElementById('manual-hint');
+  if (hint) hint.textContent = manualHint(state.manualCode);
+  const buscar = document.querySelector<HTMLButtonElement>('[data-action="manual-lookup"]');
+  if (buscar) buscar.disabled = !isValidEan(state.manualCode);
 }
 
 /** Hoja de detalle de un aditivo. */
@@ -1349,6 +1387,16 @@ function render(): void {
     if (state.scannerActive) void attachCamera();
   }
 
+  // Con la hoja abierta el foco va al campo, para poder escribir con el teclado
+  // fisico sin tener que pulsar antes en ningun sitio.
+  if (state.manualOpen) {
+    const input = document.getElementById('manual-input') as HTMLInputElement | null;
+    if (input && document.activeElement !== input) {
+      input.focus();
+      input.setSelectionRange(input.value.length, input.value.length);
+    }
+  }
+
   // El campo de busqueda se rehace en cada render y perderia el cursor.
   if (state.view === 'search' && state.searchFocus) {
     const input = document.getElementById('search-term') as HTMLInputElement | null;
@@ -1510,7 +1558,8 @@ async function pegarCodigo(): Promise<void> {
     const digitos = texto.replace(/\D/g, '').slice(0, 13);
     if (digitos) {
       state.manualCode = digitos;
-      render();
+      syncManual();
+      document.getElementById('manual-input')?.focus();
     } else {
       toast('No hay ningún número en el portapapeles.');
     }
@@ -1735,11 +1784,16 @@ root.addEventListener('click', (event) => {
     case 'key': {
       const k = el.dataset['key'];
       if (k === '⌫') state.manualCode = state.manualCode.slice(0, -1);
-      else if (k === '⎘') void pegarCodigo();
       else if (k) state.manualCode = (state.manualCode + k).slice(0, 13);
-      render();
+      syncManual();
+      // El foco vuelve al campo para que se pueda seguir con el teclado fisico
+      // despues de haber tocado una tecla de la pantalla.
+      document.getElementById('manual-input')?.focus();
       break;
     }
+    case 'paste':
+      void pegarCodigo();
+      break;
 
     // --- Busqueda ---
     case 'clear-term':
@@ -1888,6 +1942,40 @@ root.addEventListener('change', (event) => {
 });
 
 /**
+ * Entrada en el campo del codigo.
+ *
+ * Se filtra a digitos aqui y no con `pattern`: el usuario puede pegar un codigo
+ * con guiones o espacios copiado de una web, y rechazarlo entero seria
+ * quisquilloso cuando lo que quiere esta ahi dentro.
+ */
+root.addEventListener('input', (event) => {
+  const input = event.target as HTMLInputElement;
+  if (input.id !== 'manual-input') return;
+  const limpio = input.value.replace(/\D/g, '').slice(0, 13);
+  if (input.value !== limpio) input.value = limpio;
+  state.manualCode = limpio;
+  syncManual();
+});
+
+/**
+ * Pegado nativo (Ctrl+V, clic derecho, pulsacion larga).
+ *
+ * Es mas fiable que `navigator.clipboard.readText()`, que Safari y Firefox solo
+ * conceden con permiso explicito. El boton «Pegar» sigue existiendo para el
+ * movil, donde no hay Ctrl+V.
+ */
+root.addEventListener('paste', (event) => {
+  const input = event.target as HTMLElement;
+  if (input.id !== 'manual-input') return;
+  const texto = (event as ClipboardEvent).clipboardData?.getData('text') ?? '';
+  const digitos = texto.replace(/\D/g, '').slice(0, 13);
+  if (!digitos) return;
+  event.preventDefault();
+  state.manualCode = digitos;
+  syncManual();
+});
+
+/**
  * Busqueda al escribir, con rebote.
  *
  * 300 ms: por debajo se lanza una consulta por pulsacion y la lista parpadea;
@@ -1918,6 +2006,13 @@ root.addEventListener('keydown', (event) => {
   const e = event as KeyboardEvent;
   if (e.key !== 'Enter') return;
   const target = e.target as HTMLElement;
+  if (target.id === 'manual-input') {
+    if (isValidEan(state.manualCode)) {
+      state.manualOpen = false;
+      void lookup(state.manualCode);
+    }
+    return;
+  }
   if (target.id === 'search-term') {
     clearTimeout(searchTimer);
     (target as HTMLInputElement).blur();
