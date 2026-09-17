@@ -1362,6 +1362,24 @@ function contributeFormView(): SafeHtml {
 // Renderizado y acciones
 // ---------------------------------------------------------------------------
 
+/**
+ * Posicion del scroll entre renderizados.
+ *
+ * `mount()` reconstruye el DOM con innerHTML, asi que el contenedor que
+ * desplaza se crea de cero y vuelve al principio. Medido: expandir una seccion
+ * de evidencia estando abajo del todo llevaba el scroll de 1418 a 0. Le pasaba
+ * a todo -- marcar un favorito en un historial largo, plegar la certeza,
+ * abrir una hoja --, no solo al acordeon.
+ */
+let scrollView: View | undefined;
+let scrollTop = 0;
+
+/** La proxima vez que se pinte, empezar arriba. Para cuando cambia el contenido. */
+function resetScroll(): void {
+  scrollTop = 0;
+  scrollView = undefined;
+}
+
 function render(): void {
   const views: Record<View, () => SafeHtml> = {
     scan: scanView,
@@ -1370,6 +1388,12 @@ function render(): void {
     search: searchView,
     more: moreView,
   };
+  // Se anota donde estaba el scroll ANTES de rehacer el DOM. Solo vale si se
+  // sigue en la misma vista: entrar en otra debe empezar arriba.
+  const anterior = root.querySelector<HTMLElement>('.scroll');
+  if (anterior && scrollView === state.view) scrollTop = anterior.scrollTop;
+  scrollView = state.view;
+
   // Las hojas y el toast van FUERA de la vista: se superponen a cualquiera y
   // no deben desaparecer al cambiar de pestana por debajo.
   const conBarra = !state.manualOpen && !state.additiveOpen && !state.clearAsk;
@@ -1378,6 +1402,16 @@ function render(): void {
     html`${views[state.view]()} ${conBarra ? tabbar() : raw('')} ${manualSheet()}
     ${additiveSheetEl()} ${clearSheet()} ${toastEl()}`,
   );
+
+  const nuevo = root.querySelector<HTMLElement>('.scroll');
+  if (nuevo) {
+    // Leer `scrollHeight` fuerza el calculo de la maquetacion. Hace falta
+    // SIEMPRE, no solo al restaurar: sin ella, lo que venga despues -- como el
+    // salto a una seccion desde el bento -- mide sobre una maquetacion vieja y
+    // no se mueve a ningun sitio.
+    void nuevo.scrollHeight;
+    if (scrollTop > 0) nuevo.scrollTop = scrollTop;
+  }
 
   // Se devuelve el <video> persistente a su contenedor. Al ser siempre el mismo
   // nodo, el stream y el escaner siguen vivos entre renders.
@@ -1407,6 +1441,29 @@ function render(): void {
   }
 }
 
+/**
+ * Lleva la vista hasta una seccion de evidencia.
+ *
+ * Se asigna `scrollTop` en vez de usar `scrollIntoView({behavior:'smooth'})`
+ * porque el desplazamiento suave se descarta en silencio en algunos entornos
+ * -- comprobado: en el mismo contenedor, la version instantanea movia a 1098 y
+ * la suave se quedaba en 0 sin avisar --. Un salto que a veces no ocurre es
+ * peor que uno sin animacion: el usuario toca y no pasa nada.
+ *
+ * Lo suave se recupera, donde el navegador lo soporte, con `scroll-behavior`
+ * en CSS, que ademas respeta `prefers-reduced-motion`.
+ */
+function scrollToEvidence(id: string): void {
+  requestAnimationFrame(() => {
+    const cont = root.querySelector<HTMLElement>('.scroll');
+    const destino = document.getElementById(`ev-${id}`);
+    if (!cont || !destino) return;
+    const top =
+      destino.getBoundingClientRect().top - cont.getBoundingClientRect().top + cont.scrollTop - 12;
+    cont.scrollTop = Math.max(0, top);
+  });
+}
+
 /** Muestra un aviso efimero. Con accion cuando lo ocurrido se puede deshacer. */
 let toastTimer: ReturnType<typeof setTimeout> | undefined;
 function toast(text: string, action?: string, fn?: () => void): void {
@@ -1422,6 +1479,7 @@ function toast(text: string, action?: string, fn?: () => void): void {
 }
 
 async function navigate(view: View, more?: MoreView): Promise<void> {
+  resetScroll();
   if (state.view === 'scan' && view !== 'scan') stopCamera();
   state.view = view;
   state.error = undefined;
@@ -1462,6 +1520,9 @@ async function lookup(barcode: string): Promise<void> {
   state.unresolvableBarcode = false;
 
   stopCamera();
+  // Otro producto es otro contenido: empieza por arriba aunque la vista sea la
+  // misma que ya se estaba mirando.
+  resetScroll();
   state.pendingBarcode = normalized;
   state.view = 'result';
   state.loading = true;
@@ -1686,6 +1747,7 @@ root.addEventListener('click', (event) => {
       void navigate(el.dataset.view as View, el.dataset['more'] as MoreView | undefined);
       break;
     case 'more':
+      resetScroll();
       state.moreView = el.dataset['more'] as MoreView;
       state.contributeForm = false;
       render();
@@ -1694,6 +1756,7 @@ root.addEventListener('click', (event) => {
       // «Volver» significa cosas distintas segun donde se este: dentro de Mas
       // sube un nivel, en el resultado vuelve al escaner.
       if (state.view === 'more' && state.moreView !== 'index') {
+        resetScroll();
         state.moreView = 'index';
         state.contributeForm = false;
         render();
@@ -1721,12 +1784,10 @@ root.addEventListener('click', (event) => {
       render();
       // Al abrir desde un bloque del bento hay que llevar al usuario hasta la
       // seccion: si no, el contenido se despliega fuera de la pantalla y el
-      // toque parece no haber hecho nada.
-      if (action === 'open-evidence') {
-        requestAnimationFrame(() =>
-          document.getElementById(`ev-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }),
-        );
-      }
+      // toque parece no haber hecho nada. Desde el propio acordeon NO se mueve
+      // nada: quien ya esta leyendo la evidencia no quiere que le cambien el
+      // sitio por desplegar un apartado.
+      if (action === 'open-evidence') scrollToEvidence(id);
       break;
     }
     case 'open-additive': {

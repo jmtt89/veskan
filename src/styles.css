@@ -264,6 +264,16 @@ body {
   display: none;
 }
 
+/*
+ * Sin `scroll-behavior: smooth`, y a proposito.
+ *
+ * Comprobado en este proyecto: donde el desplazamiento suave no esta
+ * disponible, no degrada a instantaneo -- se descarta entero y el contenedor no
+ * se mueve. Con la propiedad puesta, hasta una asignacion directa de
+ * `scrollTop` dejaba de funcionar. Un salto que a veces no ocurre es peor que
+ * uno sin animacion: el usuario toca y no pasa nada.
+ */
+
 .glass-header {
   position: relative;
   z-index: 5;
