@@ -36,10 +36,16 @@ import { createGzip } from 'node:zlib';
 import { pipeline } from 'node:stream/promises';
 import { Readable } from 'node:stream';
 import { dirname, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { COLUMNS, FTS_COLUMNS, versionFromBuiltAt } from './lib/schema.mjs';
 
-const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+/**
+ * Las rutas se resuelven contra el DIRECTORIO DE TRABAJO, no contra la
+ * ubicacion del script. Antes se usaba la carpeta del propio archivo, lo que
+ * ataba el script a vivir en la raiz de su repositorio: el repositorio de datos
+ * lo ejecuta desde un checkout aparte, y las salidas habrian caido dentro de
+ * ese checkout en vez de donde se lanza la construccion.
+ */
+const ROOT = process.cwd();
 
 const args = Object.fromEntries(
   process.argv.slice(2).map((a) => {

@@ -39,6 +39,7 @@ import type { NutriscoreInput } from '../scoring/nutriscore2023.js';
 // Si la aplicacion tuviera su propia copia, el catalogo descargado y la API
 // podrian leer distinto el mismo producto y dar puntuaciones distintas.
 import { leerNutrientes } from '../../../scripts/lib/nutrients.mjs';
+import { ingredientesDe, nombreDe } from '../../../scripts/lib/nombres.mjs';
 
 export const OFF_BASE = 'https://world.openfoodfacts.org';
 export const OBF_BASE = 'https://world.openbeautyfacts.org';
@@ -53,14 +54,13 @@ const PRODUCT_FIELDS = [
   'no_nutrition_data',
   'code',
   'product_name',
-  'product_name_es',
+  'lang',
   'generic_name',
   'brands',
   'quantity',
   'image_front_url',
   'image_front_small_url',
   'ingredients_text',
-  'ingredients_text_es',
   'additives_tags',
   'allergens_tags',
   'labels_tags',
@@ -191,6 +191,7 @@ export class OffClient {
       return offProductToProduct(
         body.product,
         kind === 'cosmetic' ? 'openbeautyfacts' : 'openfoodfacts',
+        this.lang,
       );
     } finally {
       clearTimeout(timer);
@@ -235,14 +236,14 @@ export interface OffNutriscoreData {
 export interface OffRawProduct {
   code: string;
   product_name?: string;
-  product_name_es?: string;
+  /** Idioma principal que Open Food Facts asigna al producto. */
+  lang?: string;
   generic_name?: string;
   brands?: string;
   quantity?: string;
   image_front_url?: string;
   image_front_small_url?: string;
   ingredients_text?: string;
-  ingredients_text_es?: string;
   additives_tags?: string[];
   allergens_tags?: string[];
   labels_tags?: string[];
@@ -354,14 +355,25 @@ function detectKind(raw: OffRawProduct, source: DataSource): ProductKind {
   return flags.isBeverage ? 'beverage' : 'food';
 }
 
-export function offProductToProduct(raw: OffRawProduct, source: DataSource): Product {
+/**
+ * `idioma` es el que prefiere el usuario. Es opcional porque el producto puede
+ * no tenerlo, y entonces se coge cualquier variante antes que dejarlo sin
+ * nombre: un producto sin nombre no se muestra.
+ */
+export function offProductToProduct(
+  raw: OffRawProduct,
+  source: DataSource,
+  idioma?: string,
+): Product {
   const kind = detectKind(raw, source);
   const editBase = source === 'openbeautyfacts' ? OBF_BASE : OFF_BASE;
   const grade = raw.nutriscore_data?.grade ?? raw.nutriscore_grade;
 
   return {
     barcode: raw.code,
-    name: raw.product_name_es || raw.product_name || raw.generic_name,
+    // El idioma del usuario manda, pero si el producto no lo tiene se coge
+    // cualquiera antes que dejarlo sin nombre.
+    name: nombreDe(raw, idioma) ?? undefined,
     brands: raw.brands
       ? raw.brands
           .split(',')
@@ -372,7 +384,7 @@ export function offProductToProduct(raw: OffRawProduct, source: DataSource): Pro
     quantity: raw.quantity,
     imageUrl: raw.image_front_url,
     imageThumbUrl: raw.image_front_small_url,
-    ingredientsText: raw.ingredients_text_es || raw.ingredients_text,
+    ingredientsText: ingredientesDe(raw, idioma) ?? undefined,
     additiveTags: raw.additives_tags ?? [],
     allergenTags: raw.allergens_tags ?? [],
     labelTags: raw.labels_tags ?? [],

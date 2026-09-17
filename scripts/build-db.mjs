@@ -24,13 +24,20 @@ import {
   versionFromBuiltAt,
 } from './lib/schema.mjs';
 import { leerNutrientes } from './lib/nutrients.mjs';
+import { ingredientesDe, nombreDe } from './lib/nombres.mjs';
 import { createReadStream, mkdirSync, readFileSync, statSync, existsSync, unlinkSync, writeFileSync } from 'node:fs';
 import { createGunzip } from 'node:zlib';
 import { createInterface } from 'node:readline';
 import { dirname, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
 
-const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+/**
+ * Las rutas se resuelven contra el DIRECTORIO DE TRABAJO, no contra la
+ * ubicacion del script. Antes se usaba la carpeta del propio archivo, lo que
+ * ataba el script a vivir en la raiz de su repositorio: el repositorio de datos
+ * lo ejecuta desde un checkout aparte, y las salidas habrian caido dentro de
+ * ese checkout en vez de donde se lanza la construccion.
+ */
+const ROOT = process.cwd();
 // Identificacion ante Open Food Facts. No es autenticacion ni lleva datos
 // personales: solo el nombre del proyecto y una URL publica de contacto.
 const UA = 'Veskan/0.1 (+https://github.com/jmtt89/veskan)';
@@ -106,7 +113,9 @@ function mapProduct(p) {
   // porque, citando el esquema oficial.
   const { valores, origenes, sinDatos, imposibles } = leerNutrientes(p);
   ORIGENES.anotar(origenes, sinDatos, imposibles);
-  const name = p.product_name_es || p.product_name || p.generic_name || null;
+  // Sin idioma fijo: el catalogo lo consume gente de cualquier pais, y
+  // preferir uno descartaba productos que solo tienen el nombre en el suyo.
+  const name = nombreDe(p);
   if (!p.code || !name) return null; // sin nombre el registro no sirve al usuario
 
   return {
@@ -115,7 +124,7 @@ function mapProduct(p) {
     brands: p.brands ?? null,
     quantity: p.quantity ?? null,
     image_url: p.image_front_small_url ?? p.image_front_url ?? null,
-    ingredients_text: p.ingredients_text_es || p.ingredients_text || null,
+    ingredients_text: ingredientesDe(p),
     additives: list(p.additives_tags),
     allergens: list(p.allergens_tags),
     nova_group: num(p.nova_group),
@@ -157,8 +166,8 @@ function mapProduct(p) {
 }
 
 const API_FIELDS = [
-  'code','product_name','product_name_es','generic_name','brands','quantity',
-  'image_front_small_url','image_front_url','ingredients_text','ingredients_text_es',
+  'code','product_name','generic_name','brands','quantity','lang',
+  'image_front_small_url','image_front_url','ingredients_text',
   'additives_tags','allergens_tags','categories_tags','countries_tags',
   'nutriments','nutriscore_data','nutriscore_grade','nova_group','last_modified_t','popularity_key',
   // Campos de ORIGEN de los nutrientes. Sin ellos no se pueden leer los
