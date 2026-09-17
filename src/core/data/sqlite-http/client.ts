@@ -146,10 +146,14 @@ export class SqliteHttpSource {
       type: 'query',
       // Se une por `barcode`, no por rowid: la tabla `products` es
       // WITHOUT ROWID y por tanto no tiene columna rowid que usar.
+      //
+      // Se ordena por relevancia textual Y POPULARIDAD. Solo con `rank`, buscar
+      // "harina" devolvia antes coincidencias exactas de productos que nadie
+      // escanea que "Harina P.A.N.", que es la que la gente busca de verdad.
       sql: `SELECT p.* FROM products_fts f
             JOIN products p ON p.barcode = f.barcode
             WHERE products_fts MATCH ?
-            ORDER BY rank
+            ORDER BY rank, COALESCE(p.popularity, 0) DESC
             LIMIT ?`,
       params: [`${cleaned}*`, limit],
     });
@@ -203,6 +207,7 @@ interface SnapshotRow {
   is_fat_oil_nuts_seeds: number | null;
   is_red_meat: number | null;
   last_modified: number | null;
+  popularity: number | null;
 }
 
 const splitList = (v: string | null): string[] =>

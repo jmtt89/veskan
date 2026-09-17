@@ -28,6 +28,7 @@ import {
   scanFromFile,
   type ScannerDiagnostics,
 } from './core/scanner/barcode.js';
+import { classifyBarcode } from './core/scanner/gs1.js';
 import {
   clearHistory,
   exportContributions,
@@ -88,6 +89,8 @@ interface AppState {
   snapshotIndex?: SnapshotIndex;
   country?: string;
   snapshotStatus: 'none' | 'loading' | 'ready' | 'error';
+  /** El codigo no puede resolverse en ninguna base global (interno, libro, cupon) */
+  unresolvableBarcode?: boolean;
   snapshotDetail?: string;
   downloadProgress?: { loaded: number; total: number };
 }
@@ -354,7 +357,7 @@ function resultView(): SafeHtml {
         <div class="notice ${state.sparseProduct ? 'warn' : 'error'}">
           ${state.error ?? 'No hay ningún resultado que mostrar.'}
         </div>
-        ${state.pendingBarcode
+        ${state.pendingBarcode && !state.unresolvableBarcode
           ? html`
               <a
                 href="https://world.openfoodfacts.org/cgi/product.pl?type=edit&code=${state.pendingBarcode}"
@@ -804,6 +807,25 @@ async function lookup(barcode: string): Promise<void> {
     render();
     return;
   }
+
+  // El prefijo GS1 permite descartar de entrada lo que ninguna base global
+  // puede resolver, en vez de hacer al usuario esperar a un "no encontrado".
+  // Son casos frecuentes: el 16% del catalogo espanol son codigos internos de
+  // tienda, que no son unicos en el mundo.
+  const gs1 = classifyBarcode(normalized);
+  if (gs1.kind !== 'product' && gs1.note) {
+    stopCamera();
+    state.pendingBarcode = normalized;
+    state.view = 'result';
+    state.loading = false;
+    state.assessment = undefined;
+    state.sparseProduct = false;
+    state.error = gs1.note;
+    state.unresolvableBarcode = true;
+    render();
+    return;
+  }
+  state.unresolvableBarcode = false;
 
   stopCamera();
   state.pendingBarcode = normalized;

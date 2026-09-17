@@ -92,6 +92,15 @@ export const COUNTRY_LABELS: Record<string, string> = {
   'united-states': 'Estados Unidos',
 };
 
+/**
+ * Paises cuyo catalogo conviene tener aunque no sea el del usuario.
+ *
+ * En Latinoamerica los importados estadounidenses son habituales: medido sobre
+ * nuestros propios snapshots, el 19,3% del catalogo mexicano y el 13,8% del
+ * venezolano llevan prefijo GS1 de Estados Unidos.
+ */
+export const COMPLEMENTARY_COUNTRIES = ['united-states'];
+
 /** Deduce el pais a partir del idioma y la zona horaria del navegador. */
 export function guessCountry(available: string[]): string | undefined {
   const tz = Intl.DateTimeFormat().resolvedOptions().timeZone ?? '';
