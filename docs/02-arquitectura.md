@@ -319,3 +319,28 @@ Es su comportamiento por defecto. En una PWA que debe funcionar sin conexión es
 - Linterna, si el dispositivo la expone.
 - **Escaneo desde foto** (`capture="environment"`): en móvil dispara la cámara del sistema, que enfoca de verdad y captura a resolución completa. Es el camino más fiable, y con webcams de escritorio a veces el único que funciona.
 - Panel de diagnóstico en la propia app: motor en uso, resolución, fotogramas analizados, detecciones y descartes por dígito de control.
+
+## Logotipo Nutri-Score: marca registrada, con vía para aplicaciones
+
+Se muestra el **logotipo oficial** de Santé publique France, servido desde la propia
+aplicación (`public/nutriscore/*.svg`, versión neutra 240×130, 52 kB los cinco).
+
+El *Règlement d'usage* (edición de marzo de 2025) lo permite explícitamente en su
+**artículo 4.1**:
+
+> *«Par exception, les éditeurs de logiciels et d'applications disposent d'un droit
+> d'usage de la Marque Nutri-Score à des fins […] d'information du public.»*
+
+pero con dos condiciones:
+
+1. **Solicitud previa por correo al regulador competente del territorio**, *«avant tout
+   usage»*. **Está pendiente.** Se implementó antes de cursarla por decisión explícita.
+2. Respeto estricto del **ANEXO 2: Charte graphique**. Por eso los archivos se usan tal
+   cual: sin recolorear, sin filtros ni en modo oscuro, sin recortar y con la proporción
+   intacta. Los colores reales del logotipo no son los que citan los artículos
+   divulgativos — el verde de la A es `#00803D`, no `#038141` — así que redibujarlo de
+   memoria no habría cumplido la carta.
+
+El artículo 8.2 prohíbe además desarrollar o usar signos *similares*, lo que hace que un
+distintivo propio con los colores de la marca no sea una alternativa más segura, sino
+menos.

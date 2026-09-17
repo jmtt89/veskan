@@ -8,7 +8,7 @@
 
 import './styles.css';
 import { registerSW } from 'virtual:pwa-register';
-import { html, mount, raw, type SafeHtml } from './ui/render.js';
+import { ariaBool, html, mount, raw, type SafeHtml } from './ui/render.js';
 import { additiveSheet, assessmentView } from './ui/components.js';
 import { OffClient, OffRateLimitError } from './core/data/off.js';
 import { hasUsableData, ProductNotFoundError, ProductRepository } from './core/data/repository.js';
@@ -499,7 +499,7 @@ function scanView(): SafeHtml {
           ? html`<button
               class="chip-status mono"
               data-action="toggle-diag"
-              aria-expanded="${state.diagOpen}"
+              aria-expanded="${ariaBool(state.diagOpen)}"
             >
               ${state.diagnostics.engine === 'native' ? 'nativo' : 'WASM'}
             </button>`
@@ -561,7 +561,7 @@ function scanView(): SafeHtml {
                 <button
                   class="tool ${state.torchOn ? 'on' : ''}"
                   data-action="toggle-torch"
-                  aria-pressed="${state.torchOn}"
+                  aria-pressed="${ariaBool(state.torchOn)}"
                   ${raw(state.torchAvailable ? '' : 'disabled')}
                 >
                   <span aria-hidden="true">☀</span>${state.torchOn ? 'Luz on' : 'Linterna'}
@@ -673,7 +673,7 @@ function resultView(): SafeHtml {
           ? html`<button
               class="icon-btn star ${guardado ? 'on' : ''}"
               data-action="toggle-star"
-              aria-pressed="${guardado}"
+              aria-pressed="${ariaBool(guardado)}"
               aria-label="Guardar en favoritos"
             >
               ${guardado ? '★' : '☆'}
@@ -693,7 +693,7 @@ function resultView(): SafeHtml {
             <button
               class="secondary star ${guardado ? 'on' : ''}"
               data-action="toggle-star"
-              aria-pressed="${guardado}"
+              aria-pressed="${ariaBool(guardado)}"
               aria-label="Guardar en favoritos"
             >
               ${guardado ? '★' : '☆'}
@@ -726,7 +726,7 @@ function historyView(): SafeHtml {
             role="tab"
             data-action="hist-tab"
             data-tab="all"
-            aria-selected="${!favoritos}"
+            aria-selected="${ariaBool(!favoritos)}"
             class="${!favoritos ? 'on' : ''}"
           >
             Recientes
@@ -735,7 +735,7 @@ function historyView(): SafeHtml {
             role="tab"
             data-action="hist-tab"
             data-tab="star"
-            aria-selected="${favoritos}"
+            aria-selected="${ariaBool(favoritos)}"
             class="${favoritos ? 'on' : ''}"
           >
             ★ Favoritos
@@ -779,7 +779,7 @@ function historyView(): SafeHtml {
                         class="icon-btn star ${h.starred ? 'on' : ''}"
                         data-action="toggle-star-row"
                         data-id="${h.id}"
-                        aria-pressed="${h.starred}"
+                        aria-pressed="${ariaBool(h.starred)}"
                         aria-label="Favorito"
                       >
                         ${h.starred ? '★' : '☆'}

@@ -1089,8 +1089,15 @@ button.link,
   white-space: nowrap;
 }
 
+/*
+ * El denominador NO se atenua con opacity.
+ *
+ * Al 60% sobre la tarjeta, --ink-2 se quedaba por debajo de 4,5:1 y Lighthouse
+ * lo marcaba. Ya es texto pequeno y gris: bajarle ademas el contraste era
+ * decorar a costa de que se lea.
+ */
 .tile-pts .of {
-  opacity: 0.6;
+  color: var(--ink-2);
 }
 
 .tile-body {
@@ -1128,15 +1135,39 @@ button.link,
   text-wrap: pretty;
 }
 
-.ns-badge {
-  width: 44px;
-  height: 44px;
+/*
+ * Logotipo Nutri-Score.
+ *
+ * Proporcion intacta (240x162) y sin filtros de ningun tipo: ni en modo oscuro
+ * se le toca el color, porque la carta gráfica de la marca no lo permite. Va
+ * sobre una base clara propia para que los tonos claros del logotipo -- el
+ * amarillo de la C, el naranja de la D -- no queden flotando sobre el fondo
+ * oscuro de la tarjeta, que es donde perderian legibilidad.
+ */
+.ns-logo {
   flex: none;
-  border-radius: 10px;
-  display: grid;
-  place-items: center;
-  font-weight: 800;
-  font-size: 1.5rem;
+  width: 104px;
+  height: auto;
+  border-radius: 6px;
+  background: #fff;
+  padding: 3px;
+}
+
+.ns-logo.sm {
+  width: 76px;
+}
+
+.ns-evidence-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 4px 0 10px;
+  font-size: 0.84rem;
+  color: var(--ink-2);
+}
+
+.ns-evidence-head strong {
+  color: var(--ink);
 }
 
 .tile-bar {

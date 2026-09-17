@@ -3,7 +3,7 @@
  * sin efectos, faciles de probar.
  */
 
-import { html, raw, type SafeHtml } from './render.js';
+import { ariaBool, html, raw, type SafeHtml } from './render.js';
 import type {
   AdditiveAssessment,
   Assessment,
@@ -19,27 +19,34 @@ import { ADDITIVE_CLASS_LABELS, POPULATION_GROUP_LABELS } from '../core/scoring/
 import { PAHO_SEAL_LABELS } from '../core/scoring/paho.js';
 import { NOVA_DESCRIPTIONS } from '../core/scoring/nova.js';
 
-/** Colores oficiales de la marca Nutri-Score. No deben alterarse. */
-const NUTRISCORE_COLORS: Record<string, string> = {
-  a: '#038141',
-  b: '#85bb2f',
-  c: '#fecb02',
-  d: '#ee8100',
-  e: '#e63e11',
-};
-
 /**
- * Color del texto sobre cada fondo, elegido por contraste medido.
- * Con blanco sobre el amarillo de la C el ratio era 1.53:1; con negro es
- * 12.37:1. Solo la A admite texto blanco (4.98:1).
+ * Logotipo oficial Nutri-Score.
+ *
+ * Es el archivo de Sante publique France **tal cual**, sin recolorear ni
+ * recomponer: su carta grafica (ANEXO 2 del reglamento de uso) no admite
+ * reinterpretaciones, y los colores reales del logotipo ni siquiera coinciden
+ * con los que se citan en los articulos divulgativos -- el verde de la A es
+ * #00803D, no el #038141 que suele repetirse.
+ *
+ * Es la version neutra (240x130), sin la banda «NEW CALCULATION» que lleva la
+ * variante de transicion: esa banda va en ingles y no existe traducida al
+ * espanol. Que version del algoritmo se ha usado ya se dice al lado, en
+ * castellano, y ahi si se entiende.
+ *
+ * Se sirve desde la propia aplicacion para que funcione sin conexion y para no
+ * entregar la IP del usuario a un tercero en cada visita.
  */
-const NUTRISCORE_TEXT: Record<string, string> = {
-  a: '#ffffff',
-  b: '#111111',
-  c: '#111111',
-  d: '#111111',
-  e: '#111111',
-};
+function nutriscoreLogo(grade: string, size: 'sm' | 'md' = 'md'): SafeHtml {
+  const g = grade.toLowerCase();
+  return html`<img
+    class="ns-logo ${size}"
+    src="nutriscore/${g}.svg"
+    alt="Nutri-Score ${grade.toUpperCase()}"
+    width="240"
+    height="130"
+    loading="lazy"
+  />`;
+}
 
 const COMPONENT_LABELS: Record<string, string> = {
   energy: 'Energía',
@@ -184,8 +191,8 @@ export function confidenceRow(score: HealthScore, open: boolean): SafeHtml {
     <button
       class="confidence conf-${c.level}"
       data-action="toggle-confidence"
-      aria-expanded="${open}"
-      aria-controls="confidence-detail"
+      aria-expanded="${ariaBool(open)}"
+      ${raw(open ? 'aria-controls="confidence-detail"' : '')}
     >
       <span class="conf-bars" aria-hidden="true">
         ${[1, 2, 3].map(
@@ -274,16 +281,7 @@ export function reasonsBento(score: HealthScore): SafeHtml {
                 <span class="mono tile-pts">${puntos}<span class="of">/${tope}</span></span>
               </span>
               <span class="tile-body">
-                ${grade
-                  ? html`<span
-                      class="ns-badge"
-                      aria-label="Nutri-Score ${grade}"
-                      style="background:${NUTRISCORE_COLORS[grade.toLowerCase()]};color:${NUTRISCORE_TEXT[
-                        grade.toLowerCase()
-                      ]}"
-                      >${grade}</span
-                    >`
-                  : raw('')}
+                ${grade ? nutriscoreLogo(grade) : raw('')}
                 <span class="tile-facts">
                   <span class="tile-fact">${fact}</span>
                   <span class="tile-sub">${sub}</span>
@@ -333,7 +331,7 @@ function evidenceItem(
 ): SafeHtml {
   return html`
     <div class="ev" id="ev-${id}">
-      <button data-action="toggle-evidence" data-ev="${id}" aria-expanded="${open}">
+      <button data-action="toggle-evidence" data-ev="${id}" aria-expanded="${ariaBool(open)}">
         <span class="ev-title">${title}</span>
         ${meta ? html`<span class="ev-meta">${meta}</span>` : raw('')}
         <span class="chevron ${open ? 'open' : ''}" aria-hidden="true">▾</span>
@@ -348,12 +346,21 @@ const evRow = (k: string, v: string, tone = ''): SafeHtml =>
 
 /** Nutri-Score punto por punto, que es lo que hace auditable la nota. */
 function nutriscoreEvidence(ns: NutriscoreResult): SafeHtml {
+  // El logotipo tambien aqui: es el lenguaje que el usuario reconoce del
+  // envase, y encabezar con el el desglose ata el numero a la letra.
   const fila = (c: NutriscoreResult['components']['negative'][number], max: number) =>
     evRow(
       `${COMPONENT_LABELS[c.id] ?? c.id}${c.value !== undefined ? ` · ${formatNum(c.value)}${c.unit ?? ''}` : ''}`,
       `${c.points} / ${max}`,
     );
   return html`
+    <div class="ns-evidence-head">
+      ${nutriscoreLogo(ns.grade, 'sm')}
+      <span
+        >Puntuación <strong class="mono">${ns.score > 0 ? '+' : ''}${ns.score}</strong> ·
+        ${ns.negativePoints} negativos menos ${ns.positivePoints} positivos</span
+      >
+    </div>
     <div class="ev-group">Penalizan</div>
     ${ns.components.negative.map((c) => fila(c, c.pointsMax ?? 10))}
     <div class="ev-group">Compensan</div>

@@ -65,3 +65,13 @@ export function delegate(
     if (match && root.contains(match)) handler(match, event);
   });
 }
+
+/**
+ * Valor de un atributo ARIA booleano.
+ *
+ * Hace falta porque `html` convierte `false` en cadena vacia -- lo que permite
+ * escribir `${cond && html`...`}` -- y eso dejaba `aria-expanded=""`, que no es
+ * un valor valido. El fallo solo asomaba con el control CERRADO, que es su
+ * estado por defecto.
+ */
+export const ariaBool = (v: unknown): string => (v ? 'true' : 'false');
