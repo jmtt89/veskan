@@ -407,43 +407,57 @@ function nutriscoreEvidence(ns: NutriscoreResult, flags: Product['categoryFlags'
       }`,
       `${c.points} / ${max}`,
     );
+  const esc = gradeScale(flags);
+  const activa = ns.grade.toUpperCase();
+
   return html`
     <div class="ns-evidence-head">
       ${nutriscoreLogo(ns.grade, 'sm')}
-      <span
-        >Puntuación <strong class="mono">${signed(ns.score)}</strong> ·
-        ${ns.negativePoints} negativos menos ${ns.positivePoints} positivos</span
-      >
+      <span>Se suma lo que penaliza, se le resta lo que compensa, y el resultado da la letra.</span>
     </div>
-    ${(() => {
-      const esc = gradeScale(flags);
-      const activa = ns.grade.toUpperCase();
-      return html`
-        <div class="ns-scale" aria-label="${esc.titulo}: dónde cae este producto">
-          <div class="ns-scale-head">${esc.titulo}</div>
-          ${esc.filas.map(
-            ([g, rango]) => html`
-              <div class="ns-scale-row ${g === activa ? 'on' : ''}">
-                <span class="g">${g}</span>
-                <span class="r">${rango}</span>
-                <span class="m">${g === activa ? 'este producto' : ''}</span>
-              </div>
-            `,
-          )}
-        </div>
-        <p class="ev-note">
-          Cuantos menos puntos, mejor: el score es lo que penaliza menos lo que compensa, así que
-          <strong>puede ser negativo</strong>, y un número negativo es bueno.
-        </p>
-      `;
-    })()}
+
     <div class="ev-group">Penalizan</div>
     ${ns.components.negative.map((c) => fila(c, c.pointsMax ?? 10))}
+
     <div class="ev-group">Compensan</div>
     ${ns.components.positive.map((c) => fila(c, c.pointsMax ?? 5))}
     ${!ns.countProteins
-      ? html`<p class="ev-note">Las proteínas no cuentan: ${ns.countProteinsReason}</p>`
+      ? html`<p class="ev-note">Las proteínas no cuentan aquí: ${ns.countProteinsReason}</p>`
       : raw('')}
+
+    <!-- La operacion, escrita. Es lo que despeja la duda de si el numero esta
+         bien: se ve de donde sale cada cifra y como se combinan. -->
+    <div
+      class="ns-formula"
+      role="img"
+      aria-label="${ns.negativePoints} puntos que penalizan menos ${ns.positivePoints} que compensan
+        son ${ns.score}, que corresponde a la letra ${activa}"
+    >
+      <span class="term"><span class="n">${ns.negativePoints}</span><span class="l">penalizan</span></span>
+      <span class="op" aria-hidden="true">−</span>
+      <span class="term"><span class="n">${ns.positivePoints}</span><span class="l">compensan</span></span>
+      <span class="op" aria-hidden="true">=</span>
+      <span class="term res"><span class="n">${signed(ns.score)}</span><span class="l">puntuación</span></span>
+      <span class="op" aria-hidden="true">→</span>
+      <span class="term res"><span class="n">${activa}</span><span class="l">letra</span></span>
+    </div>
+
+    <div class="ns-scale" aria-label="${esc.titulo}: dónde cae este producto">
+      <div class="ns-scale-head">${esc.titulo}</div>
+      ${esc.filas.map(
+        ([g, rango]) => html`
+          <div class="ns-scale-row ${g === activa ? 'on' : ''}">
+            <span class="g">${g}</span>
+            <span class="r">${rango}</span>
+            <span class="m">${g === activa ? 'este producto' : ''}</span>
+          </div>
+        `,
+      )}
+    </div>
+    <p class="ev-note">
+      Cuantos menos puntos, mejor: la puntuación es lo que penaliza menos lo que compensa, así que
+      <strong>puede ser negativa</strong>, y una puntuación negativa es buena.
+    </p>
     ${ns.missingInputs.length
       ? html`<p class="ev-note">
           Se contaron como 0 por no constar: ${ns.missingInputs.join(', ')}.

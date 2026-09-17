@@ -1171,6 +1171,62 @@ button.link,
 }
 
 /*
+ * La operacion, escrita.
+ *
+ * Es el remate del desglose: se ven las dos sumas y como se combinan. Sin
+ * esto, la lista de componentes dejaba al lector haciendo la cuenta de cabeza,
+ * y una puntuacion negativa parecia un error de calculo.
+ *
+ * Va como `role="img"` con su etiqueta en palabras: leer «6 menos 7 igual
+ * menos 1 flecha A» celda a celda no se entiende.
+ */
+.ns-formula {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  margin: 14px 0;
+  padding: 14px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-tile);
+  background: var(--bg-2);
+}
+
+.ns-formula .term {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 52px;
+}
+
+.ns-formula .n {
+  font-family: var(--font-display);
+  font-size: 1.5rem;
+  font-weight: 800;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+
+.ns-formula .res .n {
+  color: var(--brand-fg);
+}
+
+.ns-formula .l {
+  font-size: 0.66rem;
+  color: var(--ink-2);
+  letter-spacing: 0.02em;
+}
+
+.ns-formula .op {
+  font-size: 1.13rem;
+  color: var(--ink-2);
+  /* A la altura de las cifras, no de las etiquetas de debajo. */
+  align-self: flex-start;
+  margin-top: 4px;
+}
+
+/*
  * Escala de la categoria.
  *
  * Sin los colores oficiales del Nutri-Score a proposito: colorear una tabla
