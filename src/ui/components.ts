@@ -573,6 +573,71 @@ export function additiveSheet(a: AdditiveAssessment): SafeHtml {
   `;
 }
 
+/**
+ * Evidencia de NOVA.
+ *
+ * NOVA no es una formula: es una clasificacion publicada (Monteiro et al.) que
+ * se asigna mirando los ingredientes. De donde sale el grupo cambia lo que
+ * podemos afirmar, asi que se dice:
+ *
+ *   - si lo clasifico Open Food Facts, o lo dedujimos nosotros;
+ *   - que marcadores concretos hay en ESTE producto.
+ *
+ * Antes solo se mostraba la definicion del grupo, que es la misma para todos
+ * los productos y no dice nada del que el usuario tiene en la mano.
+ */
+function novaEvidence(score: HealthScore): SafeHtml {
+  const nova = score.nova;
+  if (!nova) {
+    return html`<p class="ev-text">
+      Open Food Facts no ha podido determinar el grado de procesamiento, y tampoco se ha podido
+      deducir de los ingredientes declarados. Se aplica un valor neutro: ni premia ni castiga.
+    </p>`;
+  }
+
+  // Los aditivos ya evaluados traen su nombre; el marcador solo el tag.
+  const nombreDe = (tag: string): string =>
+    score.additives.find((a) => a.tag === tag)?.name.replace(/^E\d+[a-z]?\s*[-–—]\s*/i, '') ??
+    tag.replace('en:', '').toUpperCase();
+
+  return html`
+    <div class="origin">
+      <span class="origin-tag">${nova.fromSource ? 'Open Food Facts' : 'Deducido por Veskan'}</span>
+      <span
+        >${nova.fromSource
+          ? 'El grupo lo asigna la base de datos a partir de los ingredientes declarados.'
+          : 'La base no traía el grupo. Lo deducimos de los ingredientes, y solo hacia arriba: nunca afirmamos que algo esté sin procesar si no consta.'}</span
+      >
+    </div>
+
+    ${nova.markers.length
+      ? html`
+          <div class="ev-group">Marcadores de ultraprocesamiento en este producto</div>
+          ${nova.markers.map((m) =>
+            m.kind === 'additive'
+              ? evRow(
+                  nombreDe(m.value),
+                  m.additiveClass ? (ADDITIVE_CLASS_LABELS[m.additiveClass] ?? 'aditivo industrial') : 'aditivo industrial',
+                  'plain',
+                )
+              : evRow(`«${m.value}»`, 'en los ingredientes', 'plain'),
+          )}
+        `
+      : html`<p class="ev-note">
+          No se han encontrado marcadores de ultraprocesamiento en los ingredientes declarados.
+        </p>`}
+
+    <p class="ev-text" style="margin-top:12px">
+      <strong>NOVA ${nova.group}.</strong> ${NOVA_DESCRIPTIONS[nova.group]}
+    </p>
+    <p class="ev-note">
+      Clasificación NOVA (Monteiro et al., Universidad de São Paulo). No es una fórmula: agrupa los
+      alimentos por cuánto se han transformado, no por sus nutrientes. Por eso se puntúa aparte del
+      Nutri-Score y nunca se funden en una sola cifra.
+    </p>
+  `;
+}
+
 /** Tabla nutricional por 100 g, tal cual la declara el envase. */
 function nutrientsEvidence(product: Product): SafeHtml {
   const n = product.nutriments;
@@ -608,12 +673,7 @@ export function evidence(product: Product, score: HealthScore, open: Set<string>
       'processing',
       'Procesamiento · NOVA',
       score.nova ? `NOVA ${score.nova.group}` : 'sin dato',
-      score.nova
-        ? html`<p class="ev-text">${NOVA_DESCRIPTIONS[score.nova.group]}</p>`
-        : html`<p class="ev-text">
-            Open Food Facts no ha podido determinar el grado de procesamiento, y tampoco se ha
-            podido inferir de los ingredientes. Se aplica un valor neutro: ni premia ni castiga.
-          </p>`,
+      novaEvidence(score),
     ],
     [
       'additives',

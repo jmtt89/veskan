@@ -259,7 +259,14 @@ function scoreOnce(product: Product, ctx: ScoringContext): HealthScore {
     breakdown,
     confidence: assessConfidence(product, nova !== undefined),
     nutriscore,
-    nova: nova ? { group: nova.group, label: NOVA_LABELS[nova.group] } : undefined,
+    nova: nova
+      ? {
+          group: nova.group,
+          label: NOVA_LABELS[nova.group],
+          fromSource: nova.fromSource,
+          markers: nova.markers,
+        }
+      : undefined,
     additives: additives.assessments,
     paho,
     algorithmVersion: ALGORITHM_VERSION,

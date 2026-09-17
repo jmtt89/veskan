@@ -177,6 +177,15 @@ export interface PahoResult {
   exceededCount: number;
 }
 
+/** Una senal concreta de ultraprocesamiento hallada en un producto. */
+export interface NovaMarker {
+  kind: 'additive' | 'ingredient';
+  /** Tag del aditivo (`en:e150d`) o el texto que casó en los ingredientes */
+  value: string;
+  /** Clase del aditivo que lo delata, p.ej. `en:colour` */
+  additiveClass?: string;
+}
+
 /** Cuanto podemos confiar en el numero que mostramos. */
 export type ConfidenceLevel = 'high' | 'medium' | 'low' | 'insufficient';
 
@@ -211,7 +220,14 @@ export interface HealthScore {
   breakdown: ScoreBreakdownItem[];
   confidence: Confidence;
   nutriscore?: NutriscoreResult;
-  nova?: { group: 1 | 2 | 3 | 4; label: string };
+  nova?: {
+    group: 1 | 2 | 3 | 4;
+    label: string;
+    /** El grupo lo dio Open Food Facts; si no, lo dedujimos nosotros */
+    fromSource: boolean;
+    /** Senales de ultraprocesamiento halladas en este producto concreto */
+    markers: NovaMarker[];
+  };
   additives: AdditiveAssessment[];
   paho?: PahoResult;
   /** Version del algoritmo con la que se calculo, para reproducibilidad */

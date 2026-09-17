@@ -265,6 +265,37 @@ body {
 }
 
 /*
+ * De donde sale un dato.
+ *
+ * «Lo dice Open Food Facts» y «lo hemos deducido nosotros» no son lo mismo, y
+ * mezclarlos seria atribuirnos una certeza que no tenemos -- o cedersela a la
+ * base cuando la conclusion es nuestra.
+ */
+.origin {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  margin-bottom: 4px;
+  border-radius: var(--radius-control);
+  background: var(--bg-2);
+  font-size: 0.81rem;
+  color: var(--ink-2);
+  line-height: 1.45;
+}
+
+.origin-tag {
+  flex: none;
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+  background: var(--bg-3);
+  color: var(--ink);
+  font-size: 0.69rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+/*
  * Sin `scroll-behavior: smooth`, y a proposito.
  *
  * Comprobado en este proyecto: donde el desplazamiento suave no esta

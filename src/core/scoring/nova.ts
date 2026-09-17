@@ -6,7 +6,9 @@
  * nunca se funden en una sola cifra sin dejar rastro.
  */
 
-import type { Product } from '../types.js';
+import type { NovaMarker, Product } from '../types.js';
+
+export type { NovaMarker };
 
 export const NOVA_LABELS: Record<1 | 2 | 3 | 4, string> = {
   1: 'Sin procesar o minimamente procesado',
@@ -48,16 +50,45 @@ const ULTRA_PROCESSING_MARKER_CLASSES = new Set([
   'en:stabiliser',
 ]);
 
-/** Ingredientes cuyo nombre delata procesamiento industrial. */
+/**
+ * Quita las tildes SIN cambiar la longitud del texto.
+ *
+ * Importa que sea uno a uno: los patrones se buscan sobre el texto sin tildes,
+ * pero lo que se le enseña al usuario se recorta del ORIGINAL usando la misma
+ * posicion. Con `normalize('NFD')` la cadena cambia de largo y las posiciones
+ * dejarian de corresponder.
+ */
+const SIN_TILDE: Record<string, string> = {
+  á: 'a', é: 'e', í: 'i', ó: 'o', ú: 'u', ü: 'u', ñ: 'n',
+  Á: 'A', É: 'E', Í: 'I', Ó: 'O', Ú: 'U', Ü: 'U', Ñ: 'N',
+};
+const deacentuar = (t: string): string => t.replace(/[áéíóúüñÁÉÍÓÚÜÑ]/g, (c) => SIN_TILDE[c]!);
+
+/**
+ * Ingredientes cuyo nombre delata procesamiento industrial.
+ *
+ * Se escriben SIN tildes porque se buscan sobre el texto ya normalizado: en las
+ * etiquetas reales conviven «PROTEÍNA» y «proteina», y un patron acentuado
+ * fallaba con el otro. Comprobado sobre un producto real: «PROTEÍNA VEGETAL»,
+ * «JARABE DE MAÍZ» y «SABORIZANTE NATURAL» no casaban con ninguno.
+ *
+ * Incluyen el vocabulario de Latinoamerica, no solo el de Espana: alli la
+ * etiqueta dice «saborizante» donde aqui dice «aroma», y «grasa vegetal» donde
+ * aqui «aceite vegetal». Sin eso, media la region se quedaba sin marcadores.
+ */
 const ULTRA_PROCESSING_INGREDIENT_PATTERNS = [
   /jarabe de (glucosa|fructosa|maiz)/i,
   /high.fructose/i,
-  /aceite (vegetal )?(parcialmente )?hidrogenado/i,
-  /proteina (de suero |de soja )?(aislada|hidrolizada|texturizada)/i,
+  /(aceite|grasa)(s)? (vegetal(es)? )?(parcialmente )?hidrogenad[oa]/i,
+  /proteina(s)? [\w\s]{0,18}(aislada|hidrolizada|texturizada)/i,
   /maltodextrina/i,
-  /aroma(s)? (artificial|natural)/i,
+  /(aroma|saborizante)(s)? (artificial|natural|identico)/i,
+  /colorante(s)? artificial(es)?/i,
+  /(realzador|resaltador|potenciador) de(l)? sabor/i,
+  /extracto de levadura/i,
+  /caseinato/i,
   /dextrosa/i,
-  /almidon modificado/i,
+  /almidon(es)? modificad[oa]/i,
   /suero en polvo/i,
 ];
 
@@ -66,6 +97,35 @@ export interface NovaInference {
   /** true si el grupo lo determino OFF; false si lo inferimos nosotros */
   fromSource: boolean;
   reasons: string[];
+  /**
+   * Marcadores hallados, SIEMPRE, tambien cuando el grupo viene de Open Food
+   * Facts. Son la unica explicacion concreta que podemos dar de por que este
+   * producto concreto esta donde esta: la definicion del grupo es la misma para
+   * todos y no dice nada de lo que tienes en la mano.
+   */
+  markers: NovaMarker[];
+}
+
+/** Busca todas las senales de ultraprocesamiento, sin decidir nada. */
+function findMarkers(product: Product, additiveClasses: Map<string, string[]>): NovaMarker[] {
+  const markers: NovaMarker[] = [];
+
+  for (const tag of product.additiveTags) {
+    const classes = additiveClasses.get(tag) ?? [];
+    const additiveClass = classes.find((c) => ULTRA_PROCESSING_MARKER_CLASSES.has(c));
+    if (additiveClass) markers.push({ kind: 'additive', value: tag, additiveClass });
+  }
+
+  const original = product.ingredientsText ?? '';
+  const normalizado = deacentuar(original);
+  for (const pattern of ULTRA_PROCESSING_INGREDIENT_PATTERNS) {
+    const match = pattern.exec(normalizado);
+    // Se cita el texto tal y como lo escribio el fabricante, no el normalizado:
+    // ver «PROTEINA» cuando la etiqueta dice «PROTEÍNA» parece un error nuestro.
+    if (match) markers.push({ kind: 'ingredient', value: original.slice(match.index, match.index + match[0].length) });
+  }
+
+  return markers;
 }
 
 /**
@@ -79,31 +139,21 @@ export function inferNova(
   product: Product,
   additiveClasses: Map<string, string[]>,
 ): NovaInference | undefined {
+  // Se buscan SIEMPRE, aunque el grupo ya venga dado: sirven para explicar, no
+  // solo para decidir.
+  const markers = findMarkers(product, additiveClasses);
+
   if (product.novaGroup) {
-    return { group: product.novaGroup, fromSource: true, reasons: [] };
+    return { group: product.novaGroup, fromSource: true, reasons: [], markers };
   }
 
-  const reasons: string[] = [];
+  const reasons = markers.map((m) =>
+    m.kind === 'additive'
+      ? `Contiene ${m.value.replace('en:', '').toUpperCase()}, aditivo de uso industrial`
+      : `Contiene "${m.value}", marcador de ultraprocesamiento`,
+  );
 
-  for (const tag of product.additiveTags) {
-    const classes = additiveClasses.get(tag) ?? [];
-    const marker = classes.find((c) => ULTRA_PROCESSING_MARKER_CLASSES.has(c));
-    if (marker) {
-      reasons.push(`Contiene ${tag.replace('en:', '').toUpperCase()}, aditivo de uso industrial`);
-      break;
-    }
-  }
-
-  const text = product.ingredientsText ?? '';
-  for (const pattern of ULTRA_PROCESSING_INGREDIENT_PATTERNS) {
-    const match = pattern.exec(text);
-    if (match) {
-      reasons.push(`Contiene "${match[0]}", marcador de ultraprocesamiento`);
-      break;
-    }
-  }
-
-  if (reasons.length > 0) return { group: 4, fromSource: false, reasons };
+  if (reasons.length > 0) return { group: 4, fromSource: false, reasons, markers };
 
   // Sin marcadores y sin dato de origen no se inventa un grupo.
   return undefined;

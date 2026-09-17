@@ -224,7 +224,7 @@ describe('NOVA', () => {
 
   it('respeta el grupo que ya trae Open Food Facts', () => {
     const r = inferNova(baseProduct({ novaGroup: 2 }), classes);
-    expect(r).toEqual({ group: 2, fromSource: true, reasons: [] });
+    expect(r).toEqual({ group: 2, fromSource: true, reasons: [], markers: [] });
   });
 
   it('infiere NOVA 4 ante un marcador de ultraprocesamiento', () => {
@@ -346,5 +346,128 @@ describe('rango de la nota cuando faltan datos', () => {
     const s = scoreProduct(base({ fiber: 6 }, { novaGroup: 3 }), ctx);
     expect(s.confidence.level).toBe('medium');
     expect(s.confidence.notes.join(' ')).toContain('frutas');
+  });
+});
+
+describe('NOVA: de dónde sale el grupo y qué lo delata', () => {
+  /**
+   * Los marcadores existen para EXPLICAR, no solo para decidir. Antes solo se
+   * recogían cuando había que deducir el grupo, así que un producto
+   * clasificado por Open Food Facts se quedaba sin explicación ninguna y la
+   * interfaz caía en la definición del grupo, igual para todos.
+   */
+  const classes = new Map<string, string[]>([
+    ['en:e150d', ['en:colour']],
+    ['en:e322', ['en:emulsifier']],
+    ['en:e330', ['en:acidity-regulator']],
+  ]);
+
+  const producto = (extra: Record<string, unknown> = {}) =>
+    ({
+      barcode: '1',
+      name: 'X',
+      source: 'off',
+      additiveTags: [],
+      categoryTags: [],
+      allergenTags: [],
+      labelTags: [],
+      countryTags: [],
+      kind: 'food',
+      categoryFlags: {
+        isBeverage: false,
+        isWater: false,
+        isCheese: false,
+        isFatOilNutsSeeds: false,
+        isRedMeat: false,
+      },
+      nutriments: {},
+      ...extra,
+    }) as never;
+
+  it('también recoge marcadores cuando el grupo lo da Open Food Facts', () => {
+    const r = inferNova(producto({ novaGroup: 4, additiveTags: ['en:e150d'] }), classes);
+    expect(r?.fromSource).toBe(true);
+    expect(r?.markers).toHaveLength(1);
+    expect(r?.markers[0]).toMatchObject({ kind: 'additive', value: 'en:e150d', additiveClass: 'en:colour' });
+  });
+
+  it('recoge TODOS los marcadores, no solo el primero', () => {
+    // Antes cortaba en el primero de cada tipo: con dos aditivos industriales
+    // solo se podía enseñar uno, y la explicación quedaba coja.
+    const r = inferNova(
+      producto({
+        additiveTags: ['en:e150d', 'en:e322', 'en:e330'],
+        ingredientsText: 'Harina, jarabe de glucosa, maltodextrina',
+      }),
+      classes,
+    );
+    expect(r?.markers.filter((m) => m.kind === 'additive')).toHaveLength(2); // e330 no es marcador
+    expect(r?.markers.filter((m) => m.kind === 'ingredient').length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('un aditivo que no delata procesamiento industrial no cuenta', () => {
+    const r = inferNova(producto({ novaGroup: 1, additiveTags: ['en:e330'] }), classes);
+    expect(r?.markers).toHaveLength(0);
+  });
+
+  it('sigue sin inventar un grupo cuando no hay ni dato ni marcadores', () => {
+    expect(inferNova(producto({ ingredientsText: 'Tomate, sal' }), classes)).toBeUndefined();
+  });
+
+  it('deducirlo nunca afirma que algo esté sin procesar', () => {
+    // Solo eleva a 4; jamás concluye NOVA 1, que sería mucho más engañoso.
+    const r = inferNova(producto({ ingredientsText: 'Maltodextrina' }), classes);
+    expect(r?.group).toBe(4);
+    expect(r?.fromSource).toBe(false);
+  });
+});
+
+describe('NOVA: etiquetas reales, con tildes y en español de América', () => {
+  const classes = new Map<string, string[]>();
+  const conIngredientes = (ingredientsText: string) =>
+    ({
+      barcode: '1', name: 'X', source: 'off', additiveTags: [], categoryTags: [],
+      allergenTags: [], labelTags: [], countryTags: [], kind: 'food',
+      categoryFlags: { isBeverage: false, isWater: false, isCheese: false, isFatOilNutsSeeds: false, isRedMeat: false },
+      nutriments: {}, ingredientsText,
+    }) as never;
+
+  /**
+   * Caso real que destapó esto: un pan de Bimbo con «PROTEÍNA VEGETAL» y
+   * «SABORIZANTE NATURAL» no producía NI UN marcador. Los patrones iban sin
+   * tildes y con vocabulario solo de España.
+   */
+  it('las tildes ya no impiden el reconocimiento', () => {
+    for (const texto of [
+      'HARINA DE TRIGO, PROTEÍNA VEGETAL AISLADA',
+      'Agua, jarabe de maíz, sal',
+      'Almidón modificado de maíz',
+    ]) {
+      expect(inferNova(conIngredientes(texto), classes)?.markers.length, texto).toBeGreaterThan(0);
+    }
+  });
+
+  it('reconoce el vocabulario de Latinoamérica', () => {
+    for (const texto of [
+      'Harina, SABORIZANTE NATURAL',
+      'Grasa vegetal hidrogenada',
+      'Resaltador de sabor, sal',
+      'Colorantes artificiales',
+    ]) {
+      expect(inferNova(conIngredientes(texto), classes)?.markers.length, texto).toBeGreaterThan(0);
+    }
+  });
+
+  it('cita el texto tal y como lo escribió el fabricante', () => {
+    // Enseñar «PROTEINA» cuando la etiqueta dice «PROTEÍNA» parecería un fallo
+    // nuestro, así que se recorta del original, no del normalizado.
+    const r = inferNova(conIngredientes('HARINA, PROTEÍNA VEGETAL AISLADA, SAL'), classes);
+    const m = r?.markers.find((x) => x.kind === 'ingredient');
+    expect(m?.value).toContain('PROTEÍNA');
+  });
+
+  it('no marca un alimento sin procesar por llevar tildes', () => {
+    expect(inferNova(conIngredientes('Tomate, sal, aceite de oliva virgen'), classes)).toBeUndefined();
+    expect(inferNova(conIngredientes('Leche pasteurizada, fermentos lácticos'), classes)).toBeUndefined();
   });
 });
