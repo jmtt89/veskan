@@ -218,9 +218,13 @@ export function confidenceRow(score: HealthScore, open: boolean): SafeHtml {
 function blockFact(id: string, score: HealthScore): { fact: string; sub: string; grade?: string } {
   if (id === 'nutrition' && score.nutriscore) {
     const ns = score.nutriscore;
+    // Sin el numero crudo: el logotipo ya dice la letra, y «-1 pts» en el
+    // titular hace dudar de que el calculo este bien incluso a quien conoce el
+    // algoritmo. El score y su escala viven en la evidencia, que es donde se
+    // pueden explicar.
     return {
-      fact: `${ns.score > 0 ? '+' : ''}${ns.score} pts`,
-      sub: `Nutri-Score 2023 · ${ns.negativePoints} negativos − ${ns.positivePoints} positivos`,
+      fact: '',
+      sub: `Nutri-Score 2023 · ${ns.negativePoints} puntos negativos frente a ${ns.positivePoints} positivos`,
       grade: ns.grade.toUpperCase(),
     };
   }
@@ -283,7 +287,7 @@ export function reasonsBento(score: HealthScore): SafeHtml {
               <span class="tile-body">
                 ${grade ? nutriscoreLogo(grade) : raw('')}
                 <span class="tile-facts">
-                  <span class="tile-fact">${fact}</span>
+                  ${fact ? html`<span class="tile-fact">${fact}</span>` : raw('')}
                   <span class="tile-sub">${sub}</span>
                 </span>
               </span>
@@ -345,22 +349,94 @@ const evRow = (k: string, v: string, tone = ''): SafeHtml =>
   html`<div class="ev-row ${tone}"><span>${k}</span><span class="mono">${v}</span></div>`;
 
 /** Nutri-Score punto por punto, que es lo que hace auditable la nota. */
-function nutriscoreEvidence(ns: NutriscoreResult): SafeHtml {
+/**
+ * Escala de la categoria a la que pertenece el producto.
+ *
+ * Los cortes no son los mismos para todo: las bebidas tienen su propia escala
+ * -- y en ellas la A esta reservada al agua -- y las grasas, aceites, frutos
+ * secos y semillas otra. Medidos sobre esta misma implementacion, los extremos
+ * posibles del score son -17 a 55 (general y grasas) y -18 a 50 (bebidas).
+ */
+export function gradeScale(flags: Product['categoryFlags']): {
+  titulo: string;
+  filas: Array<[grado: string, rango: string]>;
+} {
+  if (flags.isBeverage) {
+    return {
+      titulo: 'Escala de bebidas',
+      filas: [
+        ['A', 'solo el agua'],
+        ['B', '−18 a 2'],
+        ['C', '3 a 6'],
+        ['D', '7 a 9'],
+        ['E', '10 a 50'],
+      ],
+    };
+  }
+  if (flags.isFatOilNutsSeeds) {
+    return {
+      titulo: 'Escala de grasas, aceites, frutos secos y semillas',
+      filas: [
+        ['A', '−17 a −6'],
+        ['B', '−5 a 2'],
+        ['C', '3 a 10'],
+        ['D', '11 a 18'],
+        ['E', '19 a 55'],
+      ],
+    };
+  }
+  return {
+    titulo: 'Escala general',
+    filas: [
+      ['A', '−17 a 0'],
+      ['B', '1 a 2'],
+      ['C', '3 a 10'],
+      ['D', '11 a 18'],
+      ['E', '19 a 55'],
+    ],
+  };
+}
+
+function nutriscoreEvidence(ns: NutriscoreResult, flags: Product['categoryFlags']): SafeHtml {
   // El logotipo tambien aqui: es el lenguaje que el usuario reconoce del
   // envase, y encabezar con el el desglose ata el numero a la letra.
   const fila = (c: NutriscoreResult['components']['negative'][number], max: number) =>
     evRow(
-      `${COMPONENT_LABELS[c.id] ?? c.id}${c.value !== undefined ? ` · ${formatNum(c.value)}${c.unit ?? ''}` : ''}`,
+      `${COMPONENT_LABELS[c.id] ?? c.id}${
+        c.value !== undefined ? ` · ${formatNum(c.value)}${c.unit ? ` ${c.unit}` : ''}` : ''
+      }`,
       `${c.points} / ${max}`,
     );
   return html`
     <div class="ns-evidence-head">
       ${nutriscoreLogo(ns.grade, 'sm')}
       <span
-        >Puntuación <strong class="mono">${ns.score > 0 ? '+' : ''}${ns.score}</strong> ·
+        >Puntuación <strong class="mono">${signed(ns.score)}</strong> ·
         ${ns.negativePoints} negativos menos ${ns.positivePoints} positivos</span
       >
     </div>
+    ${(() => {
+      const esc = gradeScale(flags);
+      const activa = ns.grade.toUpperCase();
+      return html`
+        <div class="ns-scale" aria-label="${esc.titulo}: dónde cae este producto">
+          <div class="ns-scale-head">${esc.titulo}</div>
+          ${esc.filas.map(
+            ([g, rango]) => html`
+              <div class="ns-scale-row ${g === activa ? 'on' : ''}">
+                <span class="g">${g}</span>
+                <span class="r">${rango}</span>
+                <span class="m">${g === activa ? 'este producto' : ''}</span>
+              </div>
+            `,
+          )}
+        </div>
+        <p class="ev-note">
+          Cuantos menos puntos, mejor: el score es lo que penaliza menos lo que compensa, así que
+          <strong>puede ser negativo</strong>, y un número negativo es bueno.
+        </p>
+      `;
+    })()}
     <div class="ev-group">Penalizan</div>
     ${ns.components.negative.map((c) => fila(c, c.pointsMax ?? 10))}
     <div class="ev-group">Compensan</div>
@@ -379,6 +455,9 @@ function nutriscoreEvidence(ns: NutriscoreResult): SafeHtml {
     </p>
   `;
 }
+
+/** Signo menos tipografico (U+2212), no el guion del teclado. */
+const signed = (n: number): string => (n < 0 ? `\u2212${Math.abs(n)}` : `+${n}`);
 
 function formatNum(v: number): string {
   return new Intl.NumberFormat('es', { maximumFractionDigits: 2 }).format(v);
@@ -507,8 +586,8 @@ export function evidence(product: Product, score: HealthScore, open: Set<string>
       ? [
           'nutrition',
           'Nutri-Score, punto por punto',
-          `${score.nutriscore.score > 0 ? '+' : ''}${score.nutriscore.score} · ${score.nutriscore.grade.toUpperCase()}`,
-          nutriscoreEvidence(score.nutriscore),
+          `${signed(score.nutriscore.score)} · ${score.nutriscore.grade.toUpperCase()}`,
+          nutriscoreEvidence(score.nutriscore, product.categoryFlags),
         ]
       : null,
     [
@@ -582,8 +661,8 @@ function pahoEvidence(paho?: PahoResult): SafeHtml {
   return html`
     ${paho.seals.map((s) =>
       evRow(
-        `${PAHO_SEAL_LABELS[s.id]}${s.actual !== undefined ? ` · ${formatNum(s.actual)}${s.unit}` : ''}`,
-        `${s.exceeded ? '≥' : '<'} ${formatNum(s.threshold)}${s.unit}`,
+        `${PAHO_SEAL_LABELS[s.id]}${s.actual !== undefined ? ` · ${formatNum(s.actual)} ${s.unit}` : ''}`,
+        `${s.exceeded ? '≥' : '<'} ${formatNum(s.threshold)} ${s.unit}`,
         s.exceeded ? 'exceeded' : '',
       ),
     )}

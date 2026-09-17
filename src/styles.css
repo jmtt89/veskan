@@ -1170,6 +1170,68 @@ button.link,
   color: var(--ink);
 }
 
+/*
+ * Escala de la categoria.
+ *
+ * Sin los colores oficiales del Nutri-Score a proposito: colorear una tabla
+ * propia con la paleta de la marca seria construir un signo parecido, que es
+ * justo lo que prohibe el articulo 8.2 de su reglamento de uso. La fila activa
+ * se marca con texto («este producto»), no solo con un fondo, que ademas es lo
+ * correcto para quien no distingue los colores.
+ */
+.ns-scale {
+  margin: 4px 0 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  overflow: hidden;
+}
+
+.ns-scale-head {
+  padding: 7px 10px;
+  background: var(--bg-2);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-2);
+}
+
+.ns-scale-row {
+  display: grid;
+  grid-template-columns: 28px 1fr auto;
+  gap: 10px;
+  align-items: center;
+  padding: 6px 10px;
+  font-size: 0.84rem;
+  border-top: 1px solid var(--border);
+}
+
+.ns-scale-row .g {
+  font-weight: 800;
+  text-align: center;
+  color: var(--ink-2);
+}
+
+.ns-scale-row .r {
+  font-family: var(--font-num);
+  color: var(--ink-2);
+}
+
+.ns-scale-row .m {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--brand-fg);
+}
+
+.ns-scale-row.on {
+  background: color-mix(in srgb, var(--brand-fg) 8%, transparent);
+}
+
+.ns-scale-row.on .g,
+.ns-scale-row.on .r {
+  color: var(--ink);
+}
+
 .tile-bar {
   display: block;
   height: 4px;
