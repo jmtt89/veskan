@@ -31,7 +31,7 @@
  */
 
 import Database from 'better-sqlite3';
-import { copyFileSync, createWriteStream, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { copyFileSync, cpSync, createWriteStream, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { createGzip } from 'node:zlib';
 import { pipeline } from 'node:stream/promises';
 import { Readable } from 'node:stream';
@@ -213,16 +213,18 @@ async function main() {
   const newDeltas = resolve(NEW_DIR, 'deltas');
   let heredadas = 0;
   if (existsSync(oldDeltas)) {
-    mkdirSync(newDeltas, { recursive: true });
-    for (const pais of readdirSync(oldDeltas)) {
-      const src = resolve(oldDeltas, pais);
-      if (!statSync(src).isDirectory()) continue;
-      mkdirSync(resolve(newDeltas, pais), { recursive: true });
-      for (const f of readdirSync(src)) {
-        writeFileSync(resolve(newDeltas, pais, f), readFileSync(resolve(src, f)));
-        heredadas++;
-      }
-    }
+    // Copia RECURSIVA, no de un nivel. Los paises partidos guardan sus deltas
+    // en `deltas/<pais>/<NN>/<version>.jsonl.gz`, una carpeta por parte, y el
+    // bucle anterior solo bajaba un nivel: al encontrarse la carpeta `01` de
+    // Estados Unidos intentaba leerla como fichero y reventaba con EISDIR.
+    //
+    // No fallo antes porque hasta que no hubo un historico que heredar no se
+    // ejecutaba esta rama. Es decir, se rompio justo cuando los deltas
+    // empezaron a funcionar, y tumbo dos reconstrucciones.
+    cpSync(oldDeltas, newDeltas, { recursive: true });
+    const cuenta = (dir) => readdirSync(dir, { withFileTypes: true })
+      .reduce((n, e) => n + (e.isDirectory() ? cuenta(resolve(dir, e.name)) : 1), 0);
+    heredadas = cuenta(newDeltas);
   }
   if (heredadas) console.log(`  ${heredadas} delta(s) anteriores conservados`);
 
