@@ -2619,3 +2619,14 @@ button.link,
   border-radius: 0 6px 6px 0;
   color: var(--ink);
 }
+
+/* Distintivo declarado: denominacion de origen, ecologico, crianza. */
+.alcohol-etq {
+  display: inline-block;
+  margin: 2px 4px 2px 0;
+  padding: 2px 8px;
+  border: 1px solid var(--warning);
+  border-radius: var(--radius-pill);
+  font-size: 0.72rem;
+  text-transform: capitalize;
+}

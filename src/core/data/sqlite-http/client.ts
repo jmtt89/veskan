@@ -177,6 +177,9 @@ interface SnapshotRow {
   sodium: number | null;
   fvl: number | null;
   alcohol: number | null;
+  quantity_ml: number | null;
+  drink_type: string | null;
+  labels: string | null;
   is_beverage: number | null;
   is_water: number | null;
   is_cheese: number | null;
@@ -244,7 +247,7 @@ function rowToProduct(row: SnapshotRow): Product {
     allergenTags: splitList(row.allergens),
     // El snapshot no guarda etiquetas, categorias ni paises: no los lee nadie y
     // las banderas de categoria vienen ya resueltas en sus propias columnas.
-    labelTags: [],
+    labelTags: splitList(row.labels),
     categoryTags: [],
     countryTags: [],
     nutriments: {
@@ -278,6 +281,8 @@ function rowToProduct(row: SnapshotRow): Product {
       isFatOilNutsSeeds: Boolean(row.is_fat_oil_nuts_seeds),
       isRedMeat: Boolean(row.is_red_meat),
     },
+    quantityMl: nn(row.quantity_ml),
+    ...(row.drink_type ? { drinkType: row.drink_type as Product['drinkType'] } : {}),
     implausibleNutriments: parseImplausible(row.implausible),
     estimatedNutriments: parseEstimados(row.estimados),
     // Las banderas vienen NULL cuando no se pudieron resolver. Se traducen a

@@ -104,6 +104,10 @@ export interface Product {
    * Nutrientes con un valor imposible en Open Food Facts. Vacio o ausente en
    * el caso normal. Ver `ImplausibleNutriment`.
    */
+  /** Contenido del envase en ml, para calcular las bebidas estandar. */
+  quantityMl?: number;
+  /** Tipo de bebida alcoholica: decide que escalas le aplican. */
+  drinkType?: 'espumoso' | 'vino' | 'cerveza' | 'sidra' | 'destilado';
   implausibleNutriments?: ImplausibleNutriment[];
   /** Nutrientes cuyo valor no viene de la etiqueta. Se usan igual; se avisa. */
   estimatedNutriments?: Partial<Record<string, OrigenValor>>;

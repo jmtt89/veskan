@@ -26,6 +26,7 @@ import {
 import { leerNutrientes } from './lib/nutrients.mjs';
 import { ingredientesDe, nombreDe } from './lib/nombres.mjs';
 import { banderasDe } from './lib/categorias.mjs';
+import { tipoDeBebida } from './lib/bebidas.mjs';
 import { createReadStream, mkdirSync, readFileSync, statSync, existsSync, unlinkSync, writeFileSync } from 'node:fs';
 import { createGunzip } from 'node:zlib';
 import { createInterface } from 'node:readline';
@@ -107,6 +108,17 @@ const num = (v) => {
 const list = (v) => (Array.isArray(v) && v.length ? v.join(',') : null);
 const truthy = (v) => (v === 1 || v === '1' || v === true ? 1 : 0);
 
+/** Volumen en ml, respetando la unidad declarada si la hay. */
+function volumenMl(p) {
+  const v = num(p.product_quantity);
+  if (v === null || v <= 0) return null;
+  const u = String(p.product_quantity_unit ?? '').trim().toLowerCase();
+  if (u === 'l' || u === 'kg') return v * 1000;
+  if (u === 'cl') return v * 10;
+  if (u === 'dl') return v * 100;
+  return v;   // ml o g
+}
+
 function mapProduct(p) {
   const nd = p.nutriscore_data ?? {};
   // Los `_100g` son campos CALCULADOS y en el volcado faltan a menudo; la
@@ -129,6 +141,7 @@ function mapProduct(p) {
     ingredients_text: ingredientesDe(p),
     additives: list(p.additives_tags),
     allergens: list(p.allergens_tags),
+    labels: list(p.labels_tags),
     nova_group: num(p.nova_group),
     nutriscore_grade: nd.grade ?? p.nutriscore_grade ?? null,
     nutriscore_score: num(nd.score),
@@ -146,6 +159,11 @@ function mapProduct(p) {
     sodium: valores.sodium === null ? null : valores.sodium * 1000,
     fvl: valores.fvl,
     alcohol: valores.alcohol,
+    // Volumen del envase en ml. `product_quantity` viene en gramos; para una
+    // bebida se toma 1 g = 1 ml, que es la densidad del agua y el error frente
+    // al alcohol o el azucar disuelto es menor que el de la propia declaracion.
+    quantity_ml: volumenMl(p),
+    drink_type: valores.alcohol !== null && valores.alcohol > 1.2 ? tipoDeBebida(p.categories_tags) : null,
     // Las banderas se resuelven en lib/categorias.mjs, compartido con la
     // aplicacion: leian de sitios distintos y el mismo producto podia puntuar
     // diferente segun viniera del catalogo o de la API.
@@ -184,6 +202,7 @@ const API_FIELDS = [
   // Campos de ORIGEN de los nutrientes. Sin ellos no se pueden leer los
   // productos cuyos `_100g` -que son calculados- no vienen en la respuesta.
   'nutrition_data_per','serving_quantity','no_nutrition_data',
+  'labels_tags','product_quantity_unit',
 ].join(',');
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));

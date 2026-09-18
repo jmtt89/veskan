@@ -139,3 +139,63 @@ describe('alerta de composicion elevada', () => {
     expect(alcoholView(p, scoreProduct(p, ctx)).toString()).toContain('Contenido alto en');
   });
 });
+
+describe('escalas propias de las bebidas alcoholicas', () => {
+  /**
+   * Ninguna dice si la bebida es buena: eso ya esta resuelto y el alcohol es
+   * carcinogeno del Grupo 1. Clasifican, que es otra cosa.
+   */
+  const cava = (extra: Partial<Product> = {}): Product => ({
+    ...bebida({ ...CERVEZA, alcohol: 11.5, sugars: 0.9 }),
+    quantityMl: 750, drinkType: 'espumoso',
+    labelTags: ['en:organic', 'es:do-cava'], ...extra,
+  });
+
+  it('dice cuanto alcohol lleva el ENVASE, no solo por 100 ml', () => {
+    const p = { ...bebida(CERVEZA), quantityMl: 330 };
+    const h = alcoholView(p, scoreProduct(p, ctx)).toString();
+    // 330 ml al 5% = 13,0 g de etanol = 1,3 bebidas OMS
+    expect(h).toContain('13');
+    expect(h).toContain('1.3 bebidas estándar');
+    expect(h).toContain('OMS');
+  });
+
+  it('dice que la unidad de bebida estandar no es universal', () => {
+    const p = { ...bebida(CERVEZA), quantityMl: 330 };
+    const h = alcoholView(p, scoreProduct(p, ctx)).toString();
+    expect(h).toContain('Reino Unido');
+    expect(h).toContain('Austria');
+  });
+
+  it('sin volumen no inventa las bebidas estandar', () => {
+    const p = bebida(CERVEZA);
+    expect(alcoholView(p, scoreProduct(p, ctx)).toString()).not.toContain('bebidas estándar');
+  });
+
+  it('clasifica el dulzor de un espumoso con la escala de la UE', () => {
+    const p = cava();
+    const h = alcoholView(p, scoreProduct(p, ctx)).toString();
+    // 0,9 g/100 ml = 9 g/L -> Brut
+    expect(h).toContain('Dulzor: Brut');
+    expect(h).toContain('9 g de azúcar por litro');
+    expect(h).toContain('607/2009');
+  });
+
+  it('NO aplica la escala de espumosos a una cerveza: seria usarla fuera de su alcance', () => {
+    const p = { ...bebida({ ...CERVEZA, sugars: 0.9 }), drinkType: 'cerveza' as const, quantityMl: 330 };
+    expect(alcoholView(p, scoreProduct(p, ctx)).toString()).not.toContain('Dulzor:');
+  });
+
+  it('muestra los distintivos declarados, sin convertirlos en nota', () => {
+    const h = alcoholView(cava(), scoreProduct(cava(), ctx)).toString();
+    expect(h).toContain('Distintivos declarados');
+    expect(h).toContain('organic');
+    expect(h).toContain('do cava');
+    expect(h).toContain('no su calidad');
+  });
+
+  it('sin distintivos no muestra la seccion vacia', () => {
+    const p = cava({ labelTags: [] });
+    expect(alcoholView(p, scoreProduct(p, ctx)).toString()).not.toContain('Distintivos declarados');
+  });
+});

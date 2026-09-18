@@ -42,6 +42,7 @@ import type { NutriscoreInput } from '../scoring/nutriscore2023.js';
 import { leerNutrientes } from '../../../scripts/lib/nutrients.mjs';
 import { ingredientesDe, nombreDe } from '../../../scripts/lib/nombres.mjs';
 import { banderasDe } from '../../../scripts/lib/categorias.mjs';
+import { tipoDeBebida } from '../../../scripts/lib/bebidas.mjs';
 
 export const OFF_BASE = 'https://world.openfoodfacts.org';
 export const OBF_BASE = 'https://world.openbeautyfacts.org';
@@ -65,6 +66,7 @@ const PRODUCT_FIELDS = [
   'ingredients_text',
   'additives_tags',
   'alcohol',
+  'product_quantity',
   'allergens_tags',
   'labels_tags',
   'categories_tags',
@@ -244,6 +246,7 @@ export interface OffRawProduct {
   generic_name?: string;
   brands?: string;
   quantity?: string;
+  product_quantity?: number | string;
   image_front_url?: string;
   image_front_small_url?: string;
   ingredients_text?: string;
@@ -381,6 +384,8 @@ export function offProductToProduct(
     nutriments: extractNutriments(raw),
     implausibleNutriments: extractImplausible(raw),
     estimatedNutriments: extractEstimados(raw),
+    ...(raw.product_quantity !== undefined ? { quantityMl: Number(raw.product_quantity) || undefined } : {}),
+    ...(tipoDeBebida(raw.categories_tags) ? { drinkType: tipoDeBebida(raw.categories_tags) as Product['drinkType'] } : {}),
     ...(banderasDe(raw).origen ? { categoryFlagsSource: banderasDe(raw).origen! } : {}),
     novaGroup:
       raw.nova_group !== undefined && raw.nova_group >= 1 && raw.nova_group <= 4

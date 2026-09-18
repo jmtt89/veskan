@@ -4,6 +4,7 @@
  */
 
 import { estimateFreeSugars } from '../core/scoring/paho.js';
+import { bebidasEstandar, dulzorEspumoso, gramosDeEtanol } from '../../scripts/lib/bebidas.mjs';
 import { ariaBool, html, raw, type SafeHtml } from './render.js';
 import type {
   AdditiveAssessment,
@@ -1086,6 +1087,83 @@ function composicionAltaView(product: Product): SafeHtml {
   `;
 }
 
+/**
+ * Bebidas estandar del envase.
+ *
+ * El «por 100 ml» no dice lo que importa: una lata y una botella al mismo grado
+ * llevan alcoholes muy distintos. Esto dice cuanto lleva lo que tienes en la
+ * mano, en gramos de etanol -que es lo que Irlanda exigira declarar desde mayo
+ * de 2026- y en unidades de la OMS.
+ *
+ * Se usa la definicion de la OMS (10 g) porque es la mas adoptada, y se dice
+ * cual es: no hay una sola, van de 8 g en el Reino Unido a 20 en Austria.
+ */
+function bebidasEstandarView(product: Product, abv?: number): SafeHtml {
+  const g = gramosDeEtanol(abv, product.quantityMl);
+  if (g === null) return raw('');
+  const u = bebidasEstandar(g)!;
+  return html`
+    <p class="alcohol-detalle alcohol-alto">
+      <strong>El envase de ${formatNum(product.quantityMl!)} ml contiene ${formatNum(g)} g de alcohol puro</strong>,
+      equivalente a <strong>${u < 1 ? formatNum(u) : u.toFixed(1)} bebidas estándar</strong>.
+      <span class="alcohol-fuente">
+        Unidad de la OMS, 10 g de etanol.
+        No hay una definición única: de 8 g (Reino Unido) a 20 g (Austria).
+      </span>
+    </p>
+  `;
+}
+
+/**
+ * Dulzor de un espumoso, por su azucar residual.
+ *
+ * Reglamento (CE) 607/2009, siete categorias por gramos por litro. Clasifica,
+ * no valora: decir que un cava es Brut no dice si es bueno. Solo se aplica a
+ * espumosos, que es su alcance; ponerselo a una cerveza seria usar la norma
+ * fuera de el.
+ */
+function dulzorView(product: Product): SafeHtml {
+  if (product.drinkType !== 'espumoso') return raw('');
+  const d = dulzorEspumoso(product.nutriments.sugars);
+  if (!d) return raw('');
+  return html`
+    <p class="alcohol-detalle">
+      <strong>Dulzor: ${d.categoria}</strong> · ${formatNum(d.gPorLitro)} g de azúcar por litro${
+    d.nota ? html` · ${d.nota}` : raw('')}.
+      <span class="alcohol-fuente">
+        Escala del Reglamento (CE) 607/2009, obligatoria en la etiqueta de los espumosos.
+      </span>
+    </p>
+  `;
+}
+
+/**
+ * Etiquetas de calidad: denominaciones de origen, ecologico, crianza.
+ *
+ * Son clasificacion y no valoracion -una denominacion dice de donde viene el
+ * producto y bajo que reglas se hizo, no si es mejor-, y en el mundo del alcohol
+ * son lo unico parecido a un distintivo con definicion publica. Las
+ * puntuaciones tipo Parker o Wine Spectator quedan fuera a proposito: son el
+ * juicio de un catador y no se pueden comprobar.
+ */
+function etiquetasCalidadView(product: Product): SafeHtml {
+  const et = (product.labelTags ?? [])
+    .map((t) => t.replace(/^[a-z]{2}:/, '').replace(/-/g, ' '))
+    .filter((t) => t.length > 1);
+  if (!et.length) return raw('');
+  const vistas = [...new Set(et)].slice(0, 10);
+  return html`
+    <p class="alcohol-detalle">
+      <strong>Distintivos declarados:</strong>
+      ${vistas.map((t) => html`<span class="alcohol-etq">${t}</span>`)}
+      <span class="alcohol-fuente">
+        Denominaciones de origen, certificaciones y menciones tradicionales, tal y como las
+        declara el producto. Clasifican su procedencia y método, no su calidad.
+      </span>
+    </p>
+  `;
+}
+
 export function alcoholView(product: Product, score: HealthScore): SafeHtml {
   const abv = score.alcoholic?.abv;
   return html`
@@ -1101,7 +1179,10 @@ export function alcoholView(product: Product, score: HealthScore): SafeHtml {
         esófago, colorrecto, hígado y mama.
         <span class="alcohol-fuente">Monografías IARC, vol. 100E</span>
       </p>
+      ${bebidasEstandarView(product, abv)}
+      ${dulzorView(product)}
       ${composicionAltaView(product)}
+      ${etiquetasCalidadView(product)}
       <p class="alcohol-detalle">
         <strong>No se muestra puntuación nutricional.</strong> El Nutri-Score no se aplica a
         bebidas con más de 1,2% de alcohol, y el modelo de la OPS las excluye de forma

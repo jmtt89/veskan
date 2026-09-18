@@ -29,6 +29,10 @@ CREATE TABLE products (
   ingredients_text  TEXT,
   additives         TEXT,
   allergens         TEXT,
+  -- Denominaciones de origen, ecologico, crianza... Son clasificacion, no
+  -- valoracion, y en bebidas alcoholicas son lo unico parecido a una etiqueta
+  -- de calidad que existe de forma estructurada.
+  labels            TEXT,
   nova_group        INTEGER,
   nutriscore_grade  TEXT,
   nutriscore_score  INTEGER,
@@ -47,6 +51,14 @@ CREATE TABLE products (
   -- Grado alcoholico en % vol. Decide si el Nutri-Score y los sellos de la OPS
   -- son aplicables: por encima de 1,2% no lo son, y hoy se calculaban igual.
   alcohol           REAL,
+  -- Contenido del envase en ml. Con el grado alcoholico da los gramos de etanol
+  -- que lleva de verdad lo que tienes en la mano, que es distinto de los que
+  -- lleva por 100 ml: una lata y una botella al mismo grado no son lo mismo.
+  quantity_ml       REAL,
+  -- Tipo de bebida alcoholica, deducido de las categorias al construir. Se
+  -- guarda resuelto y no la lista de categorias entera, que pesaria mucho mas
+  -- para el unico uso que le damos: saber a que escala pertenece cada una.
+  drink_type        TEXT,
   -- Las banderas admiten NULL a proposito, y el constructor lo escribe: un
   -- producto cuyas banderas no se pudieron resolver NO es lo mismo que uno que
   -- no es ninguna de esas cosas. Con 0 por defecto, a una bebida desconocida se
@@ -101,10 +113,10 @@ CREATE VIRTUAL TABLE products_fts USING fts5(
  * (lo usa la inferencia NOVA y la ficha) y `allergens` (se muestran).
  */
 export const COLUMNS = [
-  'barcode','name','brands','quantity','image_url','ingredients_text','additives','allergens',
+  'barcode','name','brands','quantity','image_url','ingredients_text','additives','allergens','labels',
   'nova_group','nutriscore_grade','nutriscore_score','energy_kj',
   'energy_kcal','fat','saturated_fat','trans_fat','carbohydrates','sugars','fiber','proteins',
-  'salt','sodium','fvl','alcohol','is_beverage','is_water','is_cheese','is_fat_oil_nuts_seeds','is_red_meat',
+  'salt','sodium','fvl','alcohol','quantity_ml','drink_type','is_beverage','is_water','is_cheese','is_fat_oil_nuts_seeds','is_red_meat',
   'last_modified','popularity','implausible','estimados',
 ];
 
