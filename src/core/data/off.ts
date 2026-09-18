@@ -40,6 +40,7 @@ import type { NutriscoreInput } from '../scoring/nutriscore2023.js';
 // podrian leer distinto el mismo producto y dar puntuaciones distintas.
 import { leerNutrientes } from '../../../scripts/lib/nutrients.mjs';
 import { ingredientesDe, nombreDe } from '../../../scripts/lib/nombres.mjs';
+import { banderasDe } from '../../../scripts/lib/categorias.mjs';
 
 export const OFF_BASE = 'https://world.openfoodfacts.org';
 export const OBF_BASE = 'https://world.openbeautyfacts.org';
@@ -261,6 +262,10 @@ export interface OffRawProduct {
   /** "on" cuando el producto declara no llevar tabla nutricional. */
   no_nutrition_data?: string | boolean;
   nutriscore_data?: OffNutriscoreData;
+  /** Estructura v3: `nutriscore["2023"].data` trae las banderas en el 99,1%. */
+  nutriscore?: Record<string, { data?: Record<string, unknown> } | undefined>;
+  /** `nutrition.aggregated_set.nutrients`: los nutrientes normalizados por 100 g. */
+  nutrition?: { aggregated_set?: { nutrients?: Record<string, unknown> } };
   nutriscore_grade?: string;
   nova_group?: number;
   nova_groups_tags?: string[];
@@ -271,18 +276,6 @@ export interface OffRawProduct {
 // ---------------------------------------------------------------------------
 // Traduccion a nuestro dominio
 // ---------------------------------------------------------------------------
-
-/**
- * Las banderas de categoria llegan de OFF de forma inconsistente: unas veces
- * como numero `1`, otras como cadena `"1"`, otras ausentes. Comprobado en
- * datos reales: `is_cheese: "1"`. Normalizar aqui evita que una regla del
- * algoritmo se desactive en silencio.
- */
-function truthy(v: number | boolean | string | undefined): boolean {
-  if (v === true || v === 1) return true;
-  if (typeof v === 'string') return v === '1' || v.toLowerCase() === 'true';
-  return false;
-}
 
 export function extractNutriments(raw: OffRawProduct): Nutriments {
   // La lectura vive en `nutrients.mjs`, compartida con la tuberia de datos: si
@@ -326,27 +319,12 @@ export function extractImplausible(raw: OffRawProduct): ImplausibleNutriment[] |
 }
 
 export function extractCategoryFlags(raw: OffRawProduct): CategoryFlags {
-  const nd = raw.nutriscore_data;
-  if (nd) {
-    return {
-      isBeverage: truthy(nd.is_beverage),
-      isWater: truthy(nd.is_water),
-      isCheese: truthy(nd.is_cheese),
-      isFatOilNutsSeeds: truthy(nd.is_fat_oil_nuts_seeds),
-      isRedMeat: truthy(nd.is_red_meat_product),
-    };
-  }
-  // Sin `nutriscore_data`, se infiere de las categorias. Es una aproximacion
-  // deliberadamente conservadora: la taxonomia real de OFF tiene miles de nodos.
-  const cats = raw.categories_tags ?? [];
-  const has = (...frags: string[]) => frags.some((f) => cats.some((c) => c.includes(f)));
-  return {
-    isBeverage: has('beverages', 'drinks', 'bebidas'),
-    isWater: has('waters', 'en:water'),
-    isCheese: has('cheese', 'quesos'),
-    isFatOilNutsSeeds: has('vegetable-oils', 'olive-oils', 'nuts', 'seeds', 'fats', 'butters'),
-    isRedMeat: has('beef', 'pork', 'lamb', 'veal', 'red-meat'),
-  };
+  // Se resuelven en `scripts/lib/categorias.mjs`, compartido con la tuberia.
+  // Aqui se deducian de `categories_tags` y alli se leian de `nutriscore_data`:
+  // dos fuentes distintas para el mismo producto, con 43,5% y 29,6% de
+  // cobertura, cuando `nutriscore["2023"].data` las tiene en el 99,1%.
+  const { isBeverage, isWater, isCheese, isFatOilNutsSeeds, isRedMeat } = banderasDe(raw);
+  return { isBeverage, isWater, isCheese, isFatOilNutsSeeds, isRedMeat };
 }
 
 function detectKind(raw: OffRawProduct, source: DataSource): ProductKind {

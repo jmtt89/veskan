@@ -25,6 +25,7 @@ import {
 } from './lib/schema.mjs';
 import { leerNutrientes } from './lib/nutrients.mjs';
 import { ingredientesDe, nombreDe } from './lib/nombres.mjs';
+import { banderasDe } from './lib/categorias.mjs';
 import { createReadStream, mkdirSync, readFileSync, statSync, existsSync, unlinkSync, writeFileSync } from 'node:fs';
 import { createGunzip } from 'node:zlib';
 import { createInterface } from 'node:readline';
@@ -112,6 +113,7 @@ function mapProduct(p) {
   // escalera de lib/nutrients.mjs cae a los campos de origen. Ver alli el
   // porque, citando el esquema oficial.
   const { valores, origenes, sinDatos, imposibles } = leerNutrientes(p);
+  const banderas = banderasDe(p);
   ORIGENES.anotar(origenes, sinDatos, imposibles);
   // Sin idioma fijo: el catalogo lo consume gente de cualquier pais, y
   // preferir uno descartaba productos que solo tienen el nombre en el suyo.
@@ -143,11 +145,14 @@ function mapProduct(p) {
     // la columna `sodium` va en mg; la escalera devuelve gramos
     sodium: valores.sodium === null ? null : valores.sodium * 1000,
     fvl: valores.fvl,
-    is_beverage: truthy(nd.is_beverage),
-    is_water: truthy(nd.is_water),
-    is_cheese: truthy(nd.is_cheese),
-    is_fat_oil_nuts_seeds: truthy(nd.is_fat_oil_nuts_seeds),
-    is_red_meat: truthy(nd.is_red_meat_product),
+    // Las banderas se resuelven en lib/categorias.mjs, compartido con la
+    // aplicacion: leian de sitios distintos y el mismo producto podia puntuar
+    // diferente segun viniera del catalogo o de la API.
+    is_beverage: banderas.isBeverage ? 1 : 0,
+    is_water: banderas.isWater ? 1 : 0,
+    is_cheese: banderas.isCheese ? 1 : 0,
+    is_fat_oil_nuts_seeds: banderas.isFatOilNutsSeeds ? 1 : 0,
+    is_red_meat: banderas.isRedMeat ? 1 : 0,
     // JSON compacto, y null cuando no hay nada: es la inmensa mayoria de filas.
     implausible: imposibles.length
       ? JSON.stringify(

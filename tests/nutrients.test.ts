@@ -269,3 +269,51 @@ describe('los valores imposibles no se descartan, se marcan', () => {
     });
   });
 });
+
+describe('peldano aggregated_set (estructura v3)', () => {
+  it('recupera lo que `nutriments` vacio no da', () => {
+    // Caso real: 7506475104722, con `nutriments: {}` en el volcado y la tabla
+    // entera en `nutrition.aggregated_set`.
+    const { valores, origenes } = leerNutrientes({
+      nutriments: {},
+      nutrition: { aggregated_set: { nutrients: {
+        energy: { value: 1659.33, unit: 'kJ', source: 'packaging' },
+        fat: { value: 4.4, unit: 'g', source: 'packaging' },
+        proteins: { value: 8.8, unit: 'g', source: 'packaging' },
+        carbohydrates: { value: 79.2, unit: 'g', source: 'packaging' },
+      } } },
+    });
+    expect(valores.fat).toBe(4.4);
+    expect(valores.proteins).toBe(8.8);
+    expect(valores.carbohydrates).toBe(79.2);
+    expect(origenes.fat).toBe('aggregated_set');
+  });
+
+  it('usa `value_computed` cuando no hay `value`', () => {
+    const { valores } = leerNutrientes({
+      nutriments: {},
+      nutrition: { aggregated_set: { nutrients: { salt: { value_computed: 1.2, unit: 'g' } } } },
+    });
+    expect(valores.salt).toBe(1.2);
+  });
+
+  it('no sustituye a los peldanos anteriores: las grasas trans van mejor en `nutriments`', () => {
+    // Medido: trans esta en el 7,3% de `nutriments` y solo en el 3,3% de v3.
+    const { valores, origenes } = leerNutrientes({
+      nutrition_data_per: '100g',
+      nutriments: { 'trans-fat_100g': 0.5 },
+      nutrition: { aggregated_set: { nutrients: { fat: { value: 10, unit: 'g' } } } },
+    });
+    expect(valores.trans_fat).toBe(0.5);
+    expect(origenes.trans_fat).toBe('100g');
+    expect(valores.fat).toBe(10);
+  });
+
+  it('respeta las cotas fisicas tambien en este peldano', () => {
+    const { valores } = leerNutrientes({
+      nutriments: {},
+      nutrition: { aggregated_set: { nutrients: { energy: { value: 50000, unit: 'kJ' } } } },
+    });
+    expect(valores.energy_kj).toBeNull();
+  });
+});
