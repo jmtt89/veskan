@@ -1,3 +1,6 @@
+-- EXPERIMENTAL, SOLO PARA INVESTIGACION. No forma parte de la aplicacion ni
+-- de la tuberia de datos. Ver docs/06-esquema-off.md.
+
 -- Equivalencia relacional de la coleccion `off.products` de Open Food Facts.
 --
 -- SQLite, como todo el proyecto: los catalogos publicados son SQLite, el

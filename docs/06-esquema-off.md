@@ -1,5 +1,17 @@
 # Esquema real de `off.products`
 
+> **Experimental, solo para investigación.**
+>
+> Nada de este documento forma parte de la aplicación. La base normalizada y las
+> herramientas que la construyen existen para revisar y entender los datos de
+> Open Food Facts, no para servirlos: se midió que no sirve como formato de
+> entrega —83 veces más grande, 75 archivos por país, unas 815 peticiones por
+> ficha frente a 4— ni aporta nada a la construcción nocturna, porque GitHub
+> Actions no tiene esta base.
+>
+> Lo que la aplicación usa sigue siendo el catálogo SQLite por país, y la
+> tubería sigue leyendo el volcado JSONL en streaming.
+
 Inferido sobre el volcado MongoDB completo de Open Food Facts del 17 de
 septiembre de 2026: **4.753.871 documentos**, sin muestreo.
 

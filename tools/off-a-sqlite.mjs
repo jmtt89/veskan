@@ -1,4 +1,15 @@
 /**
+ * EXPERIMENTAL, SOLO PARA INVESTIGACION.
+ *
+ * Esto no forma parte de la aplicacion ni de la tuberia de datos. La base
+ * normalizada sirve para revisar y entender el volcado de Open Food Facts, no
+ * para servirlo: se midio que no vale como formato de entrega -83 veces mas
+ * grande, 75 archivos por pais, unas 815 peticiones por ficha frente a 4- ni
+ * aporta nada a la construccion nocturna, porque GitHub Actions no tiene esta
+ * base. Ver docs/06-esquema-off.md.
+ */
+
+/**
  * Carga el volcado de Open Food Facts desde MongoDB local a PostgreSQL.
  *
  *   node tools/off-a-sqlite.mjs [--limite=N]

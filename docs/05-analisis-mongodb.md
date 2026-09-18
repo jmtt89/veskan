@@ -1,5 +1,17 @@
 # Analizar el volcado de Open Food Facts con MongoDB
 
+> **Experimental, solo para investigación.**
+>
+> Nada de este documento forma parte de la aplicación. La base normalizada y las
+> herramientas que la construyen existen para revisar y entender los datos de
+> Open Food Facts, no para servirlos: se midió que no sirve como formato de
+> entrega —83 veces más grande, 75 archivos por país, unas 815 peticiones por
+> ficha frente a 4— ni aporta nada a la construcción nocturna, porque GitHub
+> Actions no tiene esta base.
+>
+> Lo que la aplicación usa sigue siendo el catálogo SQLite por país, y la
+> tubería sigue leyendo el volcado JSONL en streaming.
+
 Open Food Facts publica un `mongodump` real
 (`openfoodfacts-mongodbdump.gz`, 15,7 GB) además del JSONL. Para **investigar**
 —no para construir los catálogos— restaurarlo en local es la vía correcta: una
