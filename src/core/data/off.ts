@@ -64,6 +64,7 @@ const PRODUCT_FIELDS = [
   'image_front_small_url',
   'ingredients_text',
   'additives_tags',
+  'alcohol',
   'allergens_tags',
   'labels_tags',
   'categories_tags',
@@ -299,6 +300,7 @@ export function extractNutriments(raw: OffRawProduct): Nutriments {
     // La escalera devuelve gramos; nuestro dominio guarda el sodio en mg.
     sodium: valores.sodium === null ? undefined : valores.sodium * 1000,
     fruitsVegetablesLegumes: v(valores.fvl),
+    alcohol: v(valores.alcohol),
   };
 }
 

@@ -6,7 +6,8 @@
  */
 export type ClaveNutriente =
   | 'energy_kj' | 'energy_kcal' | 'fat' | 'saturated_fat' | 'trans_fat'
-  | 'carbohydrates' | 'sugars' | 'fiber' | 'proteins' | 'salt' | 'sodium' | 'fvl';
+  | 'carbohydrates' | 'sugars' | 'fiber' | 'proteins' | 'salt' | 'sodium' | 'fvl'
+  | 'alcohol';
 
 /** Peldano de la escalera que resolvio el valor. */
 export type Origen = string;

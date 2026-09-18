@@ -145,6 +145,7 @@ function mapProduct(p) {
     // la columna `sodium` va en mg; la escalera devuelve gramos
     sodium: valores.sodium === null ? null : valores.sodium * 1000,
     fvl: valores.fvl,
+    alcohol: valores.alcohol,
     // Las banderas se resuelven en lib/categorias.mjs, compartido con la
     // aplicacion: leian de sitios distintos y el mismo producto podia puntuar
     // diferente segun viniera del catalogo o de la API.

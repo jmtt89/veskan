@@ -2574,3 +2574,48 @@ button.link,
   color: var(--ink-2);
   font: 400 0.72rem/1.4 var(--font);
 }
+
+/* Ficha de bebida alcoholica. Ocupa el lugar del anillo, asi que tiene su peso
+   visual, pero no usa el rojo de error: no es un fallo del producto, es una
+   propiedad de la sustancia. */
+.alcohol {
+  margin: 4px 0 12px;
+  padding: 16px;
+  border: 1px solid var(--warning);
+  border-radius: var(--radius-tile);
+  background: var(--warning-bg);
+}
+
+.alcohol h2 {
+  margin: 0 0 8px;
+  color: var(--warning);
+  font: 700 1rem var(--font);
+}
+
+.alcohol-clave {
+  margin: 0 0 8px;
+  font: 400 0.88rem/1.5 var(--font);
+  color: var(--ink);
+}
+
+.alcohol-detalle {
+  margin: 6px 0 0;
+  font: 400 0.78rem/1.45 var(--font);
+  color: var(--ink-2);
+}
+
+.alcohol-fuente {
+  display: block;
+  margin-top: 2px;
+  font-style: italic;
+}
+
+/* Nutriente con contenido alto. Se distingue del resto del bloque sin usar el
+   lenguaje visual de los sellos regulatorios, que aqui no aplican. */
+.alcohol-alto {
+  padding: 8px 10px;
+  border-left: 3px solid var(--warning);
+  background: rgb(0 0 0 / 4%);
+  border-radius: 0 6px 6px 0;
+  color: var(--ink);
+}

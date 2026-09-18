@@ -68,6 +68,14 @@ export const NUTRIENTES = {
   proteins: { nid: 'proteins', comp: 'proteins', unidad: 'g' },
   salt: { nid: 'salt', comp: 'salt', unidad: 'g' },
   sodium: { nid: 'sodium', unidad: 'g' },
+  /**
+   * Grado alcoholico, en % vol. Importa por el ALCANCE de los algoritmos, no
+   * por su valor: el Nutri-Score "does not apply to alcoholic drinks containing
+   * more than 1.2% alcohol" (FAQ oficial de Sante publique France), y el modelo
+   * de la OPS excluye las bebidas alcoholicas a proposito, "because they should
+   * be subjected to specific regulations".
+   */
+  alcohol: { nid: 'alcohol', unidad: '%' },
   fvl: {
     nid: 'fruits-vegetables-legumes-estimate-from-ingredients',
     // El campo de legumbres es el que pide el Nutri-Score de 2023; el de frutos

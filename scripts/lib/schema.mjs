@@ -44,6 +44,9 @@ CREATE TABLE products (
   salt              REAL,
   sodium            REAL,
   fvl               REAL,
+  -- Grado alcoholico en % vol. Decide si el Nutri-Score y los sellos de la OPS
+  -- son aplicables: por encima de 1,2% no lo son, y hoy se calculaban igual.
+  alcohol           REAL,
   -- Las banderas admiten NULL a proposito, y el constructor lo escribe: un
   -- producto cuyas banderas no se pudieron resolver NO es lo mismo que uno que
   -- no es ninguna de esas cosas. Con 0 por defecto, a una bebida desconocida se
@@ -101,7 +104,7 @@ export const COLUMNS = [
   'barcode','name','brands','quantity','image_url','ingredients_text','additives','allergens',
   'nova_group','nutriscore_grade','nutriscore_score','energy_kj',
   'energy_kcal','fat','saturated_fat','trans_fat','carbohydrates','sugars','fiber','proteins',
-  'salt','sodium','fvl','is_beverage','is_water','is_cheese','is_fat_oil_nuts_seeds','is_red_meat',
+  'salt','sodium','fvl','alcohol','is_beverage','is_water','is_cheese','is_fat_oil_nuts_seeds','is_red_meat',
   'last_modified','popularity','implausible','estimados',
 ];
 

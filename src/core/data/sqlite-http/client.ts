@@ -176,6 +176,7 @@ interface SnapshotRow {
   salt: number | null;
   sodium: number | null;
   fvl: number | null;
+  alcohol: number | null;
   is_beverage: number | null;
   is_water: number | null;
   is_cheese: number | null;
@@ -259,6 +260,7 @@ function rowToProduct(row: SnapshotRow): Product {
       salt: nn(row.salt),
       sodium: nn(row.sodium),
       fruitsVegetablesLegumes: nn(row.fvl),
+      alcohol: nn(row.alcohol),
     },
     novaGroup:
       row.nova_group && row.nova_group >= 1 && row.nova_group <= 4

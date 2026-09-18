@@ -146,6 +146,21 @@ function assessConfidence(product: Product, hasNova: boolean): Confidence {
     );
   }
 
+  // En una bebida alcoholica el Nutri-Score no se calcula, asi que avisar de
+  // que falta un nutriente suyo seria ruido.
+  if (product.nutriments.alcohol !== undefined && product.nutriments.alcohol > 1.2) {
+    return {
+      level: 'medium',
+      ratio: 1,
+      missing: [],
+      notes: [
+        'El alcohol es carcinogeno del Grupo 1 segun la IARC -la misma categoria ' +
+          'que el tabaco o el amianto- y el riesgo de cancer aumenta desde dosis bajas. ' +
+          'Ninguna escala nutricional reconocida se aplica a bebidas alcoholicas.',
+      ],
+    };
+  }
+
   // Sin saber si es una bebida, el Nutri-Score usa la escala equivocada: sus
   // umbrales de energia y azucares son distintos.
   if (product.categoryFlagsSource === undefined) {
@@ -229,8 +244,36 @@ export function scoreProduct(product: Product, ctx: ScoringContext): HealthScore
   return min === max ? score : { ...score, range: { min: Math.min(min, score.value), max: Math.max(max, score.value) } };
 }
 
+/**
+ * Umbral por encima del cual el Nutri-Score no es aplicable.
+ *
+ * Literal del FAQ oficial de Sante publique France: «The Nutri-Score does not
+ * apply to alcoholic drinks containing more than 1.2% alcohol.»
+ */
+const ABV_SIN_NUTRISCORE = 1.2;
+
 function scoreOnce(product: Product, ctx: ScoringContext): HealthScore {
   const breakdown: ScoreBreakdownItem[] = [];
+
+  /**
+   * Bebida alcoholica: dos de los cuatro bloques no son aplicables, y no por
+   * decision nuestra.
+   *
+   *   Nutri-Score  «does not apply to alcoholic drinks containing more than
+   *                1.2% alcohol» (Sante publique France)
+   *   Sellos OPS   «alcoholic drinks have been excluded from the PAHO NP model
+   *                because they should be subjected to specific regulations»
+   *
+   * NOVA y los aditivos si aplican: NOVA clasifica los fermentados en el grupo
+   * 3 y los destilados en el 4, y un sulfito es un aditivo igual en un vino.
+   *
+   * Calcular la nota igualmente no seria un error de cuenta, seria el
+   * instrumento equivocado: medido con este mismo motor, una cerveza saca 57 y
+   * un yogur bebible azucarado 27. El dano del alcohol no esta en su
+   * composicion nutricional, asi que un perfil de nutrientes no puede verlo.
+   */
+  const abv = product.nutriments.alcohol;
+  const esAlcoholica = abv !== undefined && abv > ABV_SIN_NUTRISCORE;
 
   // --- 1. Calidad nutricional (Nutri-Score 2023) ---
   const nsInput = offProductToNutriscoreInput({
@@ -246,16 +289,18 @@ function scoreOnce(product: Product, ctx: ScoringContext): HealthScore {
       is_red_meat_product: product.categoryFlags.isRedMeat ? 1 : 0,
     },
   });
-  const nutriscore = computeNutriscore2023(nsInput);
-  const nutritionHundred = nutriscoreToHundred(nutriscore, product.categoryFlags);
+  const nutriscore = esAlcoholica ? undefined : computeNutriscore2023(nsInput);
+  const nutritionHundred = nutriscore ? nutriscoreToHundred(nutriscore, product.categoryFlags) : 0;
 
-  breakdown.push({
-    id: 'nutrition',
-    label: 'Calidad nutricional',
-    contribution: nutritionHundred * WEIGHTS.nutrition,
-    weight: WEIGHTS.nutrition,
-    detail: `Nutri-Score ${nutriscore.grade.toUpperCase()} (${nutriscore.score} puntos: ${nutriscore.negativePoints} negativos menos ${nutriscore.positivePoints} positivos)`,
-  });
+  if (nutriscore) {
+    breakdown.push({
+      id: 'nutrition',
+      label: 'Calidad nutricional',
+      contribution: nutritionHundred * WEIGHTS.nutrition,
+      weight: WEIGHTS.nutrition,
+      detail: `Nutri-Score ${nutriscore.grade.toUpperCase()} (${nutriscore.score} puntos: ${nutriscore.negativePoints} negativos menos ${nutriscore.positivePoints} positivos)`,
+    });
+  }
 
   // --- 2. Grado de procesamiento (NOVA) ---
   const nova = inferNova(product, ctx.additiveClasses);
@@ -288,32 +333,42 @@ function scoreOnce(product: Product, ctx: ScoringContext): HealthScore {
 
   // --- 4. Advertencias regulatorias (modelo OPS) ---
   const hasSweeteners = additives.assessments.some((a) => a.isSweetener);
-  const paho = evaluatePaho({
+  const paho = esAlcoholica ? undefined : evaluatePaho({
     nutriments: product.nutriments,
     novaGroup: nova?.group,
     hasSweeteners,
   });
-  const pahoPenalty = Math.min(paho.exceededCount * PAHO_SEAL_PENALTY, PAHO_MAX_PENALTY);
+  const pahoPenalty = paho ? Math.min(paho.exceededCount * PAHO_SEAL_PENALTY, PAHO_MAX_PENALTY) : 0;
   const regulatoryHundred = 100 - (pahoPenalty / PAHO_MAX_PENALTY) * 100;
 
-  breakdown.push({
-    id: 'regulatory',
-    label: 'Advertencias OPS/OMS',
-    contribution: regulatoryHundred * WEIGHTS.regulatory,
-    weight: WEIGHTS.regulatory,
-    detail: paho.applicable
-      ? paho.exceededCount === 0
-        ? 'Sin sellos de advertencia'
-        : `${paho.exceededCount} sello(s) de exceso`
-      : 'No aplica: el modelo OPS cubre productos procesados y ultraprocesados',
-  });
+  if (paho) {
+    breakdown.push({
+      id: 'regulatory',
+      label: 'Advertencias OPS/OMS',
+      contribution: regulatoryHundred * WEIGHTS.regulatory,
+      weight: WEIGHTS.regulatory,
+      detail: paho.applicable
+        ? paho.exceededCount === 0
+          ? 'Sin sellos de advertencia'
+          : `${paho.exceededCount} sello(s) de exceso`
+        : 'No aplica: el modelo OPS cubre productos procesados y ultraprocesados',
+    });
+  }
 
   // --- Total ---
+  // En una bebida alcoholica solo pesan los bloques aplicables, y se
+  // renormalizan para que sumen 1. El numero resultante NO es comparable con el
+  // de un alimento -mide otra cosa- y por eso la ficha no lo presenta como
+  // nota: muestra la advertencia de alcohol en su lugar.
+  const pesoTotal = esAlcoholica
+    ? WEIGHTS.processing + WEIGHTS.additives
+    : 1;
   const weighted =
-    nutritionHundred * WEIGHTS.nutrition +
-    processingHundred * WEIGHTS.processing +
-    additives.score * WEIGHTS.additives +
-    regulatoryHundred * WEIGHTS.regulatory;
+    (nutritionHundred * (esAlcoholica ? 0 : WEIGHTS.nutrition) +
+      processingHundred * WEIGHTS.processing +
+      additives.score * WEIGHTS.additives +
+      regulatoryHundred * (esAlcoholica ? 0 : WEIGHTS.regulatory)) /
+    pesoTotal;
 
   // Los sellos OPS actuan ademas como modulador directo: un producto con varios
   // excesos no deberia poder quedar en la banda alta por mucho que compense.
@@ -335,6 +390,7 @@ function scoreOnce(product: Product, ctx: ScoringContext): HealthScore {
       : undefined,
     additives: additives.assessments,
     paho,
+    ...(esAlcoholica ? { alcoholic: { ...(abv !== undefined ? { abv } : {}), motivo: 'iarc-grupo-1' as const } } : {}),
     algorithmVersion: ALGORITHM_VERSION,
   };
 }

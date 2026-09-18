@@ -67,6 +67,14 @@ export interface Nutriments {
   sodium?: number;
   /** % de frutas, verduras, legumbres y frutos secos */
   fruitsVegetablesLegumes?: number;
+  /**
+   * Grado alcoholico, en % vol.
+   *
+   * Por encima de 1,2% el Nutri-Score NO es aplicable, segun el FAQ oficial de
+   * Sante publique France, y el modelo de perfil de nutrientes de la OPS excluye
+   * las bebidas alcoholicas de forma explicita. NOVA y los aditivos si aplican.
+   */
+  alcohol?: number;
 }
 
 export interface Product {
@@ -274,6 +282,33 @@ export interface HealthScore {
   };
   additives: AdditiveAssessment[];
   paho?: PahoResult;
+  /**
+   * Presente cuando el producto es una bebida alcoholica, y explica por que no
+   * hay nota nutricional.
+   *
+   * No es una excepcion nuestra: el Nutri-Score «does not apply to alcoholic
+   * drinks containing more than 1.2% alcohol» segun el FAQ oficial de Sante
+   * publique France, y el modelo de perfil de nutrientes de la OPS excluye las
+   * bebidas alcoholicas «because they should be subjected to specific
+   * regulations». NOVA y los aditivos si se calculan.
+   */
+  alcoholic?: {
+    /** Grado en % vol, si se conoce. */
+    abv?: number;
+    /**
+     * Por que se marca. IARC clasifica el consumo de alcohol, el etanol de las
+     * bebidas y el acetaldehido asociado como carcinogenos del **Grupo 1**
+     * -«sufficient evidence in humans»- en su monografia vol. 100E, con cancer
+     * de cavidad oral, faringe, laringe, esofago, colorrecto, higado y mama.
+     *
+     * Se dice «el riesgo aumenta desde dosis bajas» y NO «no hay umbral
+     * seguro»: lo primero lo sostiene el meta-analisis de Bagnardi (222
+     * articulos), cuya propia critica publicada acepta el cancer de mama; lo
+     * segundo es una posicion de la OMS que la monografia no afirma, y en
+     * mortalidad global la evidencia esta en disputa.
+     */
+    motivo: 'iarc-grupo-1';
+  };
   /** Version del algoritmo con la que se calculo, para reproducibilidad */
   algorithmVersion: string;
 }

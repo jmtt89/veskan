@@ -3,6 +3,7 @@
  * sin efectos, faciles de probar.
  */
 
+import { estimateFreeSugars } from '../core/scoring/paho.js';
 import { ariaBool, html, raw, type SafeHtml } from './render.js';
 import type {
   AdditiveAssessment,
@@ -1001,11 +1002,127 @@ export function implausibleWarning(product: Product): SafeHtml {
   `;
 }
 
+/**
+ * Ficha de una bebida alcoholica.
+ *
+ * NO lleva nota, y no por prudencia: dos de los cuatro bloques no son
+ * aplicables segun sus propias especificaciones -el Nutri-Score «does not apply
+ * to alcoholic drinks containing more than 1.2% alcohol», y el modelo de la OPS
+ * excluye las bebidas alcoholicas «because they should be subjected to specific
+ * regulations»- y lo que queda mide otra cosa.
+ *
+ * Calcularla igualmente daria un numero alto y enganoso: con este mismo motor,
+ * una cerveza sale 78 y un yogur bebible azucarado 27. El dano del alcohol no
+ * esta en su composicion nutricional, asi que un perfil de nutrientes no puede
+ * verlo. Se muestra en su lugar lo que si es cierto y comprobable.
+ */
+/**
+ * Nutrientes con contenido ALTO, segun el semaforo nutricional britanico.
+ *
+ * NO son sellos. Los sellos de la OPS excluyen las bebidas alcoholicas a
+ * proposito, y ninguna regulacion se los aplica: ni la NOM-051 mexicana ni la
+ * ley 27.642 argentina, que los limitan a «bebidas no alcoholicas», ni la ley
+ * 21.363 chilena, que si les pone octagonos pero con advertencias sobre el
+ * alcohol -«No beber al conducir», «Riesgo para tu bebe»-, no sobre nutrientes.
+ *
+ * Lo que si existe publicado es el criterio del etiquetado frontal britanico:
+ * rojo cuando el nutriente aporta mas del 22% de la ingesta de referencia por
+ * 100 g o 100 ml, con cortes propios para bebidas.
+ *
+ * PROCEDENCIA, para que se pueda auditar: los cortes de ALIMENTOS estan
+ * confirmados; los de BEBIDAS son los del mismo esquema a la mitad, y sus
+ * valores bajos coinciden con los publicados (grasas 1,5 y azucares 2,5 por 100
+ * ml), pero NO se pudieron leer del Anexo 3 de la guia original. Si hace falta
+ * precision, hay que comprobarlos ahi.
+ */
+const ALTO_EN: Record<string, { alimento: number; bebida: number; etiqueta: string }> = {
+  fat: { alimento: 17.5, bebida: 8.75, etiqueta: 'grasas' },
+  saturatedFat: { alimento: 5, bebida: 2.5, etiqueta: 'grasas saturadas' },
+  sugars: { alimento: 22.5, bebida: 11.25, etiqueta: 'azúcares' },
+  salt: { alimento: 1.5, bebida: 0.75, etiqueta: 'sal' },
+};
+
+/** Azucares libres: maximo diario de la OMS, 10% de la energia sobre 2.000 kcal. */
+const MAX_AZUCARES_DIA_G = 50;
+
+function composicionAltaView(product: Product): SafeHtml {
+  const n = product.nutriments;
+  const bebida = product.kind === 'beverage';
+  const por = bebida ? '100 ml' : '100 g';
+
+  const altos = Object.entries(ALTO_EN)
+    .map(([k, d]) => [d, n[k as 'fat' | 'saturatedFat' | 'sugars' | 'salt']] as const)
+    .filter(([d, v]) => v !== undefined && v > (bebida ? d.bebida : d.alimento));
+
+  const az = estimateFreeSugars(n);
+  const pctAz = az.value !== undefined && az.value > 0
+    ? Math.round((az.value / MAX_AZUCARES_DIA_G) * 100)
+    : undefined;
+
+  if (!altos.length && pctAz === undefined) return raw('');
+
+  return html`
+    ${altos.length
+      ? html`<p class="alcohol-detalle alcohol-alto">
+          <strong>Contenido alto en ${altos.map(([d]) => d.etiqueta).join(', ')}.</strong>
+          ${altos
+            .map(([d, v]) => `${d.etiqueta} ${formatNum(v!)} g por ${por}`)
+            .join(' · ')}.
+          <span class="alcohol-fuente">
+            Umbral del semáforo nutricional británico: rojo por encima del 22% de la ingesta
+            de referencia. No es un sello regulatorio.
+          </span>
+        </p>`
+      : raw('')}
+    ${pctAz !== undefined
+      ? html`<p class="alcohol-detalle">
+          Sus azúcares cubren el <strong>${pctAz}%</strong> del máximo diario de azúcares libres
+          que recomienda la OMS: menos del 10% de la energía, unos 50 g en una dieta de 2.000 kcal.
+          ${az.estimated
+            ? raw('<span class="alcohol-fuente">Azúcares libres estimados a partir de los totales.</span>')
+            : raw('')}
+        </p>`
+      : raw('')}
+  `;
+}
+
+export function alcoholView(product: Product, score: HealthScore): SafeHtml {
+  const abv = score.alcoholic?.abv;
+  return html`
+    <section class="alcohol" role="note" aria-labelledby="alcohol-title">
+      <h2 id="alcohol-title">Bebida alcohólica${abv !== undefined ? html` · ${formatNum(abv)}% vol` : raw('')}</h2>
+      <p class="alcohol-clave">
+        La <abbr title="Agencia Internacional para la Investigación sobre el Cáncer, de la OMS">IARC</abbr>
+        clasifica el consumo de alcohol como <strong>carcinógeno del Grupo 1</strong>, la misma
+        categoría que el tabaco o el amianto, y el riesgo de cáncer aumenta desde dosis bajas.
+      </p>
+      <p class="alcohol-detalle">
+        Con evidencia suficiente en humanos para cáncer de cavidad oral, faringe, laringe,
+        esófago, colorrecto, hígado y mama.
+        <span class="alcohol-fuente">Monografías IARC, vol. 100E</span>
+      </p>
+      ${composicionAltaView(product)}
+      <p class="alcohol-detalle">
+        <strong>No se muestra puntuación nutricional.</strong> El Nutri-Score no se aplica a
+        bebidas con más de 1,2% de alcohol, y el modelo de la OPS las excluye de forma
+        expresa. Una nota basada en sus nutrientes diría poco sobre el riesgo real.
+      </p>
+    </section>
+  `;
+}
+
 export function assessmentView(assessment: Assessment, ui: ResultUi): SafeHtml {
   if (assessment.kind === 'cosmetic') {
     return cosmeticView(assessment.product, assessment.assessment);
   }
   const { product, score } = assessment;
+  // Una bebida alcoholica no lleva anillo ni nota: ver `alcoholView`.
+  if (score.alcoholic) {
+    return html`
+      ${alcoholView(product, score)} ${implausibleWarning(product)}
+      ${evidence(product, score, ui.evidenceOpen)}
+    `;
+  }
   return html`
     ${verdict(product, score)} ${confidenceRow(score, ui.confidenceOpen)}
     ${implausibleWarning(product)} ${reasonsBento(score)}
