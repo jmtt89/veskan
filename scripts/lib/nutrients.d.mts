@@ -33,6 +33,12 @@ export interface LecturaNutrientes {
    * la ficha los muestra para que el usuario los compruebe en el envase.
    */
   imposibles: NutrienteImposible[];
+  /**
+   * Nutrientes cuyo valor NO viene de la etiqueta, y de que tipo son:
+   * `estimate` (deducido de los ingredientes), `computed` (derivado de otros
+   * valores) o `approx` (marcado como aproximado). No se descartan.
+   */
+  estimados: Partial<Record<ClaveNutriente, 'estimate' | 'computed' | 'approx'>>;
   /** El producto declara no llevar tabla nutricional (`no_nutrition_data`). */
   sinDatos: boolean;
 }

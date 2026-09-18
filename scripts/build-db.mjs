@@ -112,7 +112,7 @@ function mapProduct(p) {
   // Los `_100g` son campos CALCULADOS y en el volcado faltan a menudo; la
   // escalera de lib/nutrients.mjs cae a los campos de origen. Ver alli el
   // porque, citando el esquema oficial.
-  const { valores, origenes, sinDatos, imposibles } = leerNutrientes(p);
+  const { valores, origenes, sinDatos, imposibles, estimados } = leerNutrientes(p);
   const banderas = banderasDe(p);
   ORIGENES.anotar(origenes, sinDatos, imposibles);
   // Sin idioma fijo: el catalogo lo consume gente de cualquier pais, y
@@ -148,11 +148,13 @@ function mapProduct(p) {
     // Las banderas se resuelven en lib/categorias.mjs, compartido con la
     // aplicacion: leian de sitios distintos y el mismo producto podia puntuar
     // diferente segun viniera del catalogo o de la API.
-    is_beverage: banderas.isBeverage ? 1 : 0,
-    is_water: banderas.isWater ? 1 : 0,
-    is_cheese: banderas.isCheese ? 1 : 0,
-    is_fat_oil_nuts_seeds: banderas.isFatOilNutsSeeds ? 1 : 0,
-    is_red_meat: banderas.isRedMeat ? 1 : 0,
+    // NULL cuando no se pudieron resolver: no es lo mismo "no es una bebida"
+    // que "no sabemos si lo es".
+    is_beverage: banderas.origen === null ? null : banderas.isBeverage ? 1 : 0,
+    is_water: banderas.origen === null ? null : banderas.isWater ? 1 : 0,
+    is_cheese: banderas.origen === null ? null : banderas.isCheese ? 1 : 0,
+    is_fat_oil_nuts_seeds: banderas.origen === null ? null : banderas.isFatOilNutsSeeds ? 1 : 0,
+    is_red_meat: banderas.origen === null ? null : banderas.isRedMeat ? 1 : 0,
     // JSON compacto, y null cuando no hay nada: es la inmensa mayoria de filas.
     implausible: imposibles.length
       ? JSON.stringify(
@@ -164,6 +166,9 @@ function mapProduct(p) {
             ...(x.sustituido ? { s: x.sustituido } : {}),
           })),
         )
+      : null,
+    estimados: Object.keys(estimados).length
+      ? Object.entries(estimados).map(([k, v]) => `${k}:${v}`).join(',')
       : null,
     last_modified: p.last_modified_t ? p.last_modified_t * 1000 : null,
     popularity: num(p.popularity_key) ?? 0,

@@ -450,6 +450,40 @@ filas— y viajan hasta la ficha:
 
 Nunca se puntúa con un valor imposible: un 19.200 kJ/100 g arrastraría la nota entera.
 
+## Idea pendiente: comparar contra la media de la categoría
+
+La ficha de Open Food Facts muestra una columna *«Compared to»* con la media de
+cada nutriente en la categoría del producto: la leche condensada `7506475104722`
+sale con 1.659 kJ frente a 1.147 kJ de media, **+45%**. Es una lectura que dice
+más que el valor absoluto, porque sitúa el producto entre sus iguales.
+
+**No se puede copiar del volcado.** El producto solo guarda contra qué compararse
+—`compared_to_category: "en:condensed-milks"`— y los promedios viven aparte, en
+un fichero que Product Opener carga en memoria y que su propio código describe
+como *«too big to store for github»*:
+
+```perl
+retrieve("$BASE_DIRS{PRIVATE_DATA}/categories_stats/categories_nutriments_per_country.world.sto")
+```
+
+Comprobado: el valor 1.147 no aparece en la respuesta de la API del producto.
+
+**Pero sí se puede calcular.** Es una media por categoría y nutriente, que sobre
+los 4,75 M es un agregado corriente. Y el tamaño no es problema: son miles de
+categorías, no millones de productos, así que cabría publicarse junto a los
+catálogos.
+
+Dos avisos antes de intentarlo:
+
+- El fichero de Open Food Facts es **por país** (`per_country`), no solo por
+  categoría: el mismo producto se compara contra medias distintas según dónde se
+  mire. Copiar solo la media mundial sería otra cosa.
+- Una media sin mediana ni dispersión engaña: en categorías pequeñas o muy
+  heterogéneas, «+45% respecto a la media» puede no significar nada.
+
+Queda anotado como idea, no como plan. Primero tiene que funcionar bien lo que
+ya hay.
+
 ## Logotipo Nutri-Score: marca registrada, con vía para aplicaciones
 
 Se muestra el **logotipo oficial** de Santé publique France, servido desde la propia

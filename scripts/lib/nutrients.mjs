@@ -76,6 +76,9 @@ export const NUTRIENTES = {
     // con el dato de 2021 informa mas que dejarlo en nulo. Queda anotado como
     // origen para que se vea de donde salio.
     respaldo: [
+      // `aggregated_set` lo llama sin el sufijo, y sin esta entrada el peldano
+      // v3 no lo encontraba: buscaba una clave que alli no existe.
+      'fruits-vegetables-legumes',
       'fruits-vegetables-nuts-estimate-from-ingredients',
       'fruits-vegetables-nuts',
     ],
@@ -209,7 +212,24 @@ export function leerNutriente(p, clave, ctx) {
       () => {
         const x = ctx.v3[nid];
         if (!x || typeof x !== 'object') return null;
-        return convertir(num(x.value ?? x.value_computed), x.unit ?? def.unidad, def.unidad);
+        const v = convertir(num(x.value ?? x.value_computed), x.unit ?? def.unidad, def.unidad);
+        // De que tipo es el valor. No cambia cual se usa: se usa igual. Cambia
+        // lo que la ficha puede decir de el.
+        //
+        //   estimate  Open Food Facts lo dedujo de la lista de ingredientes.
+        //             El porcentaje de frutas y verduras es asi el 100% de las
+        //             veces -medido sobre 798.133 valores-, y es un componente
+        //             POSITIVO del Nutri-Score: puede subir la nota.
+        //   computed  el sistema lo derivo de otros. La sal lo es en el 87,9%,
+        //             convertida desde el sodio o al reves.
+        //   approx    el propio Open Food Facts lo marca con "~" en su ficha.
+        //             La energia lo lleva en el 83,1%.
+        if (v !== null) {
+          ctx.comoEs[clave] = x.source === 'estimate' ? 'estimate'
+            : x.value === undefined && x.value_computed !== undefined ? 'computed'
+            : x.modifier ? 'approx' : null;
+        }
+        return v;
       },
       true,
     ]);
@@ -308,6 +328,8 @@ export function leerNutrientes(p) {
     // peldanos: las grasas trans van al reves -7,3% en `nutriments` contra 3,3%
     // aqui-, asi que se suman las fuentes.
     v3: p?.nutrition?.aggregated_set?.nutrients ?? {},
+    /** Como es cada valor: estimado, calculado o aproximado. Se rellena al leer. */
+    comoEs: {},
   };
   ctx.racionFiable = racionFiable(ctx.n, ctx.racion, ctx.por);
 
@@ -347,9 +369,17 @@ export function leerNutrientes(p) {
   derivar('salt', 'sodium', 2.5, 'sodio');
   derivar('sodium', 'salt', 1 / 2.5, 'sal');
 
+  // Solo se conservan las marcas de los nutrientes que acabaron usandose: si el
+  // valor vino de otro peldano, como es el de v3 no dice nada de el.
+  const estimados = {};
+  for (const [clave, tipo] of Object.entries(ctx.comoEs)) {
+    if (tipo && origenes[clave] === 'aggregated_set') estimados[clave] = tipo;
+  }
+
   return {
     valores,
     origenes,
+    estimados,
     imposibles,
     // "no_nutrition_data: on" es la ausencia LEGITIMA, documentada como
     // frecuente ("thousands of products"). No es un fallo que haya que tapar.

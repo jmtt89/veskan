@@ -345,7 +345,8 @@ function evidenceItem(
   `;
 }
 
-const evRow = (k: string, v: string, tone = ''): SafeHtml =>
+/** `v` admite SafeHtml para poder marcar un valor sin escapar el marcado. */
+const evRow = (k: string, v: string | SafeHtml, tone = ''): SafeHtml =>
   html`<div class="ev-row ${tone}"><span>${k}</span><span class="mono">${v}</span></div>`;
 
 /** Nutri-Score punto por punto, que es lo que hace auditable la nota. */
@@ -657,7 +658,42 @@ function nutrientsEvidence(product: Product): SafeHtml {
   if (presentes.length === 0) {
     return html`<p class="ev-text">Este producto no tiene tabla nutricional registrada.</p>`;
   }
-  return html`${presentes.map(([k, v, u]) => evRow(k, `${formatNum(v!)}${u}`, 'plain'))}`;
+
+  /**
+   * Valores que no vienen de la etiqueta. Se muestran igual -son los que usa el
+   * calculo- pero marcados, porque leerlos como declarados seria creerles una
+   * precision que no tienen. El porcentaje de frutas y verduras, por ejemplo, es
+   * una estimacion el 100% de las veces.
+   */
+  const est = product.estimatedNutriments ?? {};
+  const CLAVE: Record<string, string> = {
+    'Energía': 'energy_kcal', 'Grasas': 'fat', '  de las cuales saturadas': 'saturated_fat',
+    'Hidratos de carbono': 'carbohydrates', '  de los cuales azúcares': 'sugars',
+    'Fibra': 'fiber', 'Proteínas': 'proteins', 'Sal': 'salt',
+  };
+  const NOTA: Record<string, string> = {
+    estimate: 'estimado a partir de los ingredientes',
+    computed: 'calculado a partir de otros valores',
+    approx: 'aproximado',
+  };
+
+  const usadas = new Set<string>();
+  const cuerpo = presentes.map(([k, v, u]) => {
+    const tipo = est[CLAVE[k] ?? ''] ?? (CLAVE[k] === 'energy_kcal' ? est.energy_kj : undefined);
+    if (!tipo) return evRow(k, `${formatNum(v!)}${u}`, 'plain');
+    usadas.add(tipo);
+    return evRow(
+      k,
+      html`<span title="${NOTA[tipo]!}">≈ ${formatNum(v!)}${u}<sup class="ev-marca">*</sup></span>`,
+      'plain',
+    );
+  });
+
+  const leyenda = [...usadas].map((t) => NOTA[t]!).join('; ');
+  return html`${cuerpo}
+    ${leyenda
+      ? html`<p class="ev-nota"><sup>*</sup> ${leyenda}. No lo declara el envase.</p>`
+      : raw('')}`;
 }
 
 /** El bloque de evidencia entero. `open` dice cuales estan desplegadas. */

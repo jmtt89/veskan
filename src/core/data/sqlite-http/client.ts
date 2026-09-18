@@ -7,7 +7,7 @@
  * logico (el pais) y mantiene su propia conexion alli.
  */
 
-import type { ImplausibleNutriment, Product } from '../../types.js';
+import type { ImplausibleNutriment, OrigenValor, Product } from '../../types.js';
 import type { OpenStrategy } from './sqlite.worker.js';
 import { send, type ProgressHandler } from './worker-pool.js';
 import type { DeltaFile } from './delta-sync.js';
@@ -184,6 +184,7 @@ interface SnapshotRow {
   last_modified: number | null;
   popularity: number | null;
   implausible: string | null;
+  estimados: string | null;
 }
 
 /**
@@ -191,6 +192,17 @@ interface SnapshotRow {
  * columna por nutriente. Si viniera corrupto se ignora: es informacion
  * adicional, nunca motivo para que la ficha no se muestre.
  */
+/** "fvl:estimate,salt:computed" -> objeto. Si viniera roto se ignora. */
+function parseEstimados(raw: string | null): Record<string, OrigenValor> | undefined {
+  if (!raw) return undefined;
+  const out: Record<string, OrigenValor> = {};
+  for (const par of raw.split(',')) {
+    const [k, v] = par.split(':');
+    if (k && (v === 'estimate' || v === 'computed' || v === 'approx')) out[k] = v;
+  }
+  return Object.keys(out).length ? out : undefined;
+}
+
 function parseImplausible(raw: string | null): ImplausibleNutriment[] | undefined {
   if (!raw) return undefined;
   try {
@@ -265,6 +277,10 @@ function rowToProduct(row: SnapshotRow): Product {
       isRedMeat: Boolean(row.is_red_meat),
     },
     implausibleNutriments: parseImplausible(row.implausible),
+    estimatedNutriments: parseEstimados(row.estimados),
+    // Las banderas vienen NULL cuando no se pudieron resolver. Se traducen a
+    // `false` para el calculo -es el valor seguro- pero se anota que no se sabe.
+    ...(row.is_beverage === null ? {} : { categoryFlagsSource: 'snapshot' }),
     source: 'snapshot',
     lastModified: nn(row.last_modified),
     fetchedAt: Date.now(),

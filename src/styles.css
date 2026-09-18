@@ -2560,3 +2560,17 @@ button.link,
   margin-left: 4px;
   color: var(--warning);
 }
+
+/* Marca de los valores que no vienen de la etiqueta. Discreta a proposito: el
+   dato se usa igual, solo se advierte de como es. */
+.ev-marca {
+  color: var(--ink-2);
+  font-size: 0.7em;
+  margin-left: 1px;
+}
+
+.ev-nota {
+  margin: 6px 0 0;
+  color: var(--ink-2);
+  font: 400 0.72rem/1.4 var(--font);
+}

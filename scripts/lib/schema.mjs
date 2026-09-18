@@ -44,6 +44,10 @@ CREATE TABLE products (
   salt              REAL,
   sodium            REAL,
   fvl               REAL,
+  -- Las banderas admiten NULL a proposito, y el constructor lo escribe: un
+  -- producto cuyas banderas no se pudieron resolver NO es lo mismo que uno que
+  -- no es ninguna de esas cosas. Con 0 por defecto, a una bebida desconocida se
+  -- le aplicaba la escala del Nutri-Score de los solidos sin que nada avisara.
   is_beverage       INTEGER,
   is_water          INTEGER,
   is_cheese         INTEGER,
@@ -55,6 +59,12 @@ CREATE TABLE products (
   -- la ficha, en vez de presentar un hueco como si el dato no existiera. JSON
   -- compacto: [{"n":"energy_kj","v":19200,"m":"max","s":"nutriscore"}].
   implausible       TEXT,
+  -- Nutrientes cuyo valor NO viene de la etiqueta, con que tipo son, en la
+  -- forma "fvl:estimate,salt:computed,energy_kj:approx". No se descartan -se usan
+  -- igual- pero la ficha puede decirlo. Medido sobre el volcado: el porcentaje
+  -- de frutas y verduras es estimado el 100% de las veces, la sal esta
+  -- calculada en el 87,9% y la energia va marcada como aproximada en el 83,1%.
+  estimados         TEXT,
   -- Metrica de escaneos de Open Food Facts. Sirve para dos cosas: acotar los
   -- paises grandes a los productos que la gente escanea de verdad, y ordenar
   -- los resultados de busqueda por relevancia real en vez de alfabeticamente.
@@ -92,7 +102,7 @@ export const COLUMNS = [
   'nova_group','nutriscore_grade','nutriscore_score','energy_kj',
   'energy_kcal','fat','saturated_fat','trans_fat','carbohydrates','sugars','fiber','proteins',
   'salt','sodium','fvl','is_beverage','is_water','is_cheese','is_fat_oil_nuts_seeds','is_red_meat',
-  'last_modified','popularity','implausible',
+  'last_modified','popularity','implausible','estimados',
 ];
 
 /** Columnas que alimentan el indice de texto. Solo si cambian se toca el FTS. */

@@ -126,6 +126,35 @@ function assessConfidence(product: Product, hasNova: boolean): Confidence {
    * es obligatorio no puntuar con ellos, porque un 19.200 kJ/100 g arrastraria
    * la puntuacion entera.
    */
+  /**
+   * Valores que no vienen de la etiqueta. No se descartan -la nota se calcula
+   * con ellos- pero decirlo cambia como hay que leerla.
+   */
+  const est = product.estimatedNutriments ?? {};
+  const estimados = Object.entries(est).filter(([, t]) => t === 'estimate').map(([k]) => k);
+  if (estimados.length) {
+    notes.push(
+      `El valor de ${estimados.map((k) => NOMBRE_NUTRIENTE[k] ?? k).join(' y ')} no viene de la ` +
+        'etiqueta: Open Food Facts lo deduce de la lista de ingredientes.',
+    );
+  }
+  const calculados = Object.entries(est).filter(([, t]) => t === 'computed').map(([k]) => k);
+  if (calculados.length) {
+    notes.push(
+      `El valor de ${calculados.map((k) => NOMBRE_NUTRIENTE[k] ?? k).join(' y ')} esta calculado ` +
+        'a partir de otros datos, no declarado en el envase.',
+    );
+  }
+
+  // Sin saber si es una bebida, el Nutri-Score usa la escala equivocada: sus
+  // umbrales de energia y azucares son distintos.
+  if (product.categoryFlagsSource === undefined) {
+    notes.push(
+      'No se ha podido determinar la categoria del producto (bebida, queso, aceite...), ' +
+        'y el Nutri-Score usa umbrales distintos segun cual sea.',
+    );
+  }
+
   const sinSustituto = (product.implausibleNutriments ?? []).filter((x) => !x.replacedBy);
   for (const x of sinSustituto) {
     notes.push(

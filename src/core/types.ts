@@ -32,6 +32,20 @@ export interface ImplausibleNutriment {
   replacedBy?: string;
 }
 
+/**
+ * Como es el valor de un nutriente cuando NO viene de la etiqueta.
+ *
+ *   estimate  Open Food Facts lo dedujo de la lista de ingredientes
+ *   computed  el sistema lo derivo de otros valores
+ *   approx    Open Food Facts lo marca como aproximado
+ *
+ * No se descarta ninguno: se usan igual, pero la ficha lo dice. Medido sobre el
+ * volcado completo, el porcentaje de frutas y verduras es estimado el 100% de
+ * las veces, la sal esta calculada en el 87,9% y la energia va marcada como
+ * aproximada en el 83,1%.
+ */
+export type OrigenValor = 'estimate' | 'computed' | 'approx';
+
 export interface Nutriments {
   /** kJ / 100 g */
   energyKj?: number;
@@ -83,6 +97,14 @@ export interface Product {
    * el caso normal. Ver `ImplausibleNutriment`.
    */
   implausibleNutriments?: ImplausibleNutriment[];
+  /** Nutrientes cuyo valor no viene de la etiqueta. Se usan igual; se avisa. */
+  estimatedNutriments?: Partial<Record<string, OrigenValor>>;
+  /**
+   * De donde salieron las banderas de categoria, o `undefined` si no se
+   * pudieron resolver. Sin esto, «no es una bebida» y «no sabemos si lo es» son
+   * indistinguibles, y el Nutri-Score aplica escalas distintas a cada caso.
+   */
+  categoryFlagsSource?: string;
   source: DataSource;
   /** Epoch ms de la ultima edicion conocida del dato */
   lastModified?: number;

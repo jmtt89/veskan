@@ -39,6 +39,10 @@ const baseProduct = (over: Partial<Product> = {}): Product => ({
     isFatOilNutsSeeds: false,
     isRedMeat: false,
   },
+  // Las muestras fijan las banderas a mano, asi que su origen es conocido. Sin
+  // esto el motor avisaria -con razon- de que no sabe si el producto es una
+  // bebida, y el Nutri-Score usa umbrales distintos segun la categoria.
+  categoryFlagsSource: 'prueba',
   source: 'openfoodfacts',
   ...over,
 });
@@ -300,6 +304,9 @@ describe('rango de la nota cuando faltan datos', () => {
     ({
       barcode: '1', name: 'X', source: 'off', additiveTags: [], categoryTags: [],
       categoryFlags: { isBeverage: false, isWater: false, isCheese: false, isFatOilNutsSeeds: false, isRedMeat: false },
+      // El origen es conocido: las banderas se fijan aqui. Sin declararlo, el
+      // motor avisaria de que no sabe la categoria, y con razon.
+      categoryFlagsSource: 'prueba',
       nutriments: { energyKj: 1490, sugars: 0.5, saturatedFat: 0.5, salt: 0, proteins: 7, fat: 1.5, ...extra },
       ingredientsText: 'harina de maiz', ...more,
     }) as never;

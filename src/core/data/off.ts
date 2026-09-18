@@ -30,6 +30,7 @@ import type {
   ImplausibleNutriment,
   Nutriments,
   NutriscoreGrade,
+  OrigenValor,
   Product,
   ProductKind,
 } from '../types.js';
@@ -318,6 +319,13 @@ export function extractImplausible(raw: OffRawProduct): ImplausibleNutriment[] |
   }));
 }
 
+/** Nutrientes cuyo valor no viene de la etiqueta. Ver `OrigenValor`. */
+export function extractEstimados(raw: OffRawProduct): Record<string, OrigenValor> | undefined {
+  const { estimados } = leerNutrientes(raw);
+  const k = Object.keys(estimados);
+  return k.length ? (estimados as Record<string, OrigenValor>) : undefined;
+}
+
 export function extractCategoryFlags(raw: OffRawProduct): CategoryFlags {
   // Se resuelven en `scripts/lib/categorias.mjs`, compartido con la tuberia.
   // Aqui se deducian de `categories_tags` y alli se leian de `nutriscore_data`:
@@ -370,6 +378,8 @@ export function offProductToProduct(
     countryTags: raw.countries_tags ?? [],
     nutriments: extractNutriments(raw),
     implausibleNutriments: extractImplausible(raw),
+    estimatedNutriments: extractEstimados(raw),
+    ...(banderasDe(raw).origen ? { categoryFlagsSource: banderasDe(raw).origen! } : {}),
     novaGroup:
       raw.nova_group !== undefined && raw.nova_group >= 1 && raw.nova_group <= 4
         ? (raw.nova_group as 1 | 2 | 3 | 4)
