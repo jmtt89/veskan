@@ -1,0 +1,10 @@
+{
+  "name": "veskan-tools",
+  "private": true,
+  "type": "module",
+  "description": "Herramientas de analisis local. No forman parte de la aplicacion ni de la tuberia: sus dependencias viven aqui para no cargar el proyecto con ellas.",
+  "dependencies": {
+    "better-sqlite3": "^12.4.1",
+    "mongodb": "^6.21.0"
+  }
+}
