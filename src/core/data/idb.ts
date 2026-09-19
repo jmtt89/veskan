@@ -13,10 +13,26 @@ import type { Product } from '../types.js';
 /** Un producto cacheado caduca a los 30 dias. */
 export const CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
+/**
+ * Version del mapeo y del calculo con que se guardo una fila.
+ *
+ * El cache no guarda el JSON de Open Food Facts, sino el `Product` ya mapeado,
+ * y el score se recalcula a partir de el. Asi que cuando cambia COMO leemos
+ * los datos -la escalera de nutrientes, las banderas de categoria, las marcas
+ * de estimacion- las filas viejas siguen siendo validas por fecha y falsas por
+ * contenido: el usuario ve datos de antes del arreglo durante 30 dias, y en
+ * una ventana de incognito los ve bien. Paso de verdad con el 7506475104722.
+ *
+ * SUBIR ESTE NUMERO al cambiar `Product`, `mapProduct` o el motor de score.
+ */
+export const CACHE_SCHEMA_VERSION = 2;
+
 export interface CachedProduct extends Product {
   /** Clave primaria */
   barcode: string;
   cachedAt: number;
+  /** `CACHE_SCHEMA_VERSION` vigente al guardarla. Ausente en filas anteriores. */
+  schema?: number;
 }
 
 export interface HistoryEntry {
@@ -71,10 +87,23 @@ export class VeskanDb extends Dexie {
 
 export const db = new VeskanDb();
 
+/**
+ * Si una fila del cache ya no sirve: por vieja, o por venir de otra version
+ * del mapeo. Separada de la lectura para poder probarla sin IndexedDB.
+ */
+export function filaCaducada(
+  row: { cachedAt: number; schema?: number },
+  ahora = Date.now(),
+): boolean {
+  return ahora - row.cachedAt > CACHE_TTL_MS || row.schema !== CACHE_SCHEMA_VERSION;
+}
+
 export async function getCachedProduct(barcode: string): Promise<Product | undefined> {
   const row = await db.products.get(barcode);
   if (!row) return undefined;
-  if (Date.now() - row.cachedAt > CACHE_TTL_MS) {
+  // Caducada por fecha, o escrita por una version anterior del mapeo: en los
+  // dos casos se descarta y se vuelve a resolver contra el catalogo.
+  if (filaCaducada(row)) {
     await db.products.delete(barcode);
     return undefined;
   }
@@ -82,7 +111,7 @@ export async function getCachedProduct(barcode: string): Promise<Product | undef
 }
 
 export async function putCachedProduct(product: Product): Promise<void> {
-  await db.products.put({ ...product, cachedAt: Date.now() });
+  await db.products.put({ ...product, cachedAt: Date.now(), schema: CACHE_SCHEMA_VERSION });
 }
 
 /**

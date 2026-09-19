@@ -1,8 +1,34 @@
+import { execSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 import { defineConfig } from 'vite';
 import { VitePWA } from 'vite-plugin-pwa';
 
+/**
+ * Version e identificador de build, inyectados al compilar.
+ *
+ * Antes el pie de pagina mostraba un literal '0.1.0' escrito a mano que no se
+ * toco en meses: con el service worker sirviendo el bundle anterior, el
+ * usuario no tenia forma de saber si estaba viendo el codigo nuevo o el viejo.
+ * El commit corto cambia en cada despliegue, que es justo lo que hace falta
+ * para poder diagnosticarlo.
+ */
+const VERSION = JSON.parse(readFileSync('./package.json', 'utf8')).version;
+const BUILD = (() => {
+  try {
+    return execSync('git rev-parse --short HEAD', { stdio: ['ignore', 'pipe', 'ignore'] })
+      .toString()
+      .trim();
+  } catch {
+    return 'local';
+  }
+})();
+
 export default defineConfig({
   base: './',
+  define: {
+    __APP_VERSION__: JSON.stringify(VERSION),
+    __BUILD__: JSON.stringify(BUILD),
+  },
   build: {
     target: 'es2022',
     sourcemap: true,

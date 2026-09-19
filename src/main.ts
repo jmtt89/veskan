@@ -38,7 +38,9 @@ import { FEATURES } from './core/features.js';
 import type { AdditiveAssessment, Assessment } from './core/types.js';
 
 const APP_NAME = 'Veskan';
-const APP_VERSION = '0.1.0';
+/** Inyectados por Vite al compilar; ver `define` en `vite.config.ts`. */
+const APP_VERSION = __APP_VERSION__;
+const APP_BUILD = __BUILD__;
 
 /**
  * Carpeta donde viven los snapshots por pais (capa L1).
@@ -990,7 +992,7 @@ function moreIndex(): SafeHtml {
         </div>`
       : raw('')}
     <p class="fineprint">
-      ${APP_NAME} ${APP_VERSION} · código AGPL-3.0 · datos ODbL
+      ${APP_NAME} ${APP_VERSION} (${APP_BUILD}) · código AGPL-3.0 · datos ODbL
     </p>
   `;
 }
