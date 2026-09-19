@@ -31,6 +31,7 @@ import { createReadStream, mkdirSync, readFileSync, statSync, existsSync, unlink
 import { createGunzip } from 'node:zlib';
 import { createInterface } from 'node:readline';
 import { dirname, resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 
 /**
  * Las rutas se resuelven contra el DIRECTORIO DE TRABAJO, no contra la
@@ -119,7 +120,14 @@ function volumenMl(p) {
   return v;   // ml o g
 }
 
-function mapProduct(p) {
+/**
+ * Traduce un producto de Open Food Facts a nuestra fila.
+ *
+ * Se exporta para que `apply-off-delta.mjs` use EXACTAMENTE el mismo mapeo: si
+ * la reconstruccion nocturna tradujera distinto que la semanal, los catalogos
+ * irian divergiendo un poco cada dia sin que nada fallara.
+ */
+export function mapProduct(p) {
   const nd = p.nutriscore_data ?? {};
   // Los `_100g` son campos CALCULADOS y en el volcado faltan a menudo; la
   // escalera de lib/nutrients.mjs cae a los campos de origen. Ver alli el
@@ -818,7 +826,11 @@ async function main() {
   if (results.every((r) => r.count === 0)) console.log('\n  Aviso: no se guardo ningun producto.');
 }
 
-main().catch((e) => {
-  console.error(e);
-  process.exit(1);
-});
+// Solo se ejecuta si se invoca directamente. Al importarlo -lo hace
+// `apply-off-delta.mjs` para reutilizar `mapProduct`- no debe construir nada.
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main().catch((e) => {
+    console.error(e);
+    process.exit(1);
+  });
+}
