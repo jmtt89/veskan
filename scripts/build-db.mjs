@@ -428,14 +428,16 @@ function finalizeDb(target, maxProducts) {
  * GitHub rechaza cualquier archivo de mas de 100 MB en el push, asi que un
  * catalogo que lo supere no es "grande": es impublicable.
  *
- * 92 MB, y no menos, porque partir es CARO para el usuario: obliga a descargar
- * ese pais entero otra vez, ya que las filas cambian de archivo y los deltas
- * dejan de encadenar. Solo se parte cuando de verdad no cabe.
+ * El valor por defecto son 92 MB, por debajo del limite DURO de GitHub, que son
+ * 100 MB por archivo. Pero GitHub avisa mucho antes:
  *
- * Con 80 MB, Espana (76,6 MB) se habria partido en unas seis semanas sin
- * ninguna necesidad: cabe de sobra bajo el limite real. Con 92 MB tiene medio
- * ano de margen, y los 8 MB que quedan son mucho mas de lo que crece un
- * catalogo entre dos reconstrucciones nocturnas.
+ *   remote: warning: File united-states-01.sqlite3 is 84.25 MB; this is larger
+ *   than GitHub's recommended maximum file size of 50.00 MB
+ *
+ * Por eso el workflow lo baja a 45 MB. Partir es caro para el usuario -obliga a
+ * bajarse ese pais otra vez, porque las filas cambian de archivo y los deltas
+ * dejan de encadenar- asi que no se parte por gusto; pero publicar archivos que
+ * el propio alojamiento desaconseja tampoco sale gratis.
  *
  * Se puede bajar con `--max-part-mb=N`. Era una constante en el codigo, y el
  * workflow llegaba a decir "edita build-db.mjs" cuando un pais no cabia: un
@@ -465,7 +467,58 @@ function splitDb(sourcePath, country, outDir, previousBounds) {
   const total = src.prepare('SELECT COUNT(*) AS n FROM products').get().n;
   const bytes = statSync(sourcePath).size;
 
+  /**
+   * Peso estimado de cada fila. Se calcula SIEMPRE, no solo al elegir cortes
+   * nuevos, porque tambien hace falta para comprobar si los cortes anteriores
+   * siguen valiendo.
+   */
+  const TEXTO = [
+    'name', 'brands', 'quantity', 'image_url', 'ingredients_text',
+    'additives', 'allergens', 'labels', 'nutriscore_grade', 'implausible',
+    'estimados', 'drink_type',
+  ];
+  const BYTES_FIJOS = 120;
+  const pesoSql = TEXTO.map((c) => `length(coalesce(${c},''))`).join(' + ');
+  const filas = src
+    .prepare(`SELECT barcode, ${pesoSql} + ${BYTES_FIJOS} AS peso FROM products ORDER BY barcode`)
+    .all();
+  const totalPeso = filas.reduce((t, f) => t + f.peso, 0);
+  /** Bytes reales por unidad de peso estimado, para traducir una cosa en la otra. */
+  const bytesPorPeso = totalPeso > 0 ? bytes / totalPeso : 0;
+
+  /** Peso de cada tramo que definen unos cortes dados. */
+  const pesoDeTramos = (cortes) => {
+    const pesos = new Array(cortes.length + 1).fill(0);
+    let i = 0;
+    for (const f of filas) {
+      while (i < cortes.length && f.barcode >= cortes[i]) i++;
+      pesos[i] += f.peso;
+    }
+    return pesos;
+  };
+
   let bounds = previousBounds;
+
+  /**
+   * Los cortes se congelan a proposito -moverlos cambia de archivo las filas y
+   * rompe las cadenas de deltas- pero no pueden ser INTOCABLES: al bajar el
+   * limite de 92 a 45 MB, Espana habria seguido publicando sus dos partes de
+   * 51,5 MB, las dos por encima del nuevo maximo, sin que nada avisara.
+   *
+   * Se comprueba antes de escribir nada, porque partir borra el archivo de
+   * origen y no se puede reintentar despues.
+   */
+  if (bounds && bounds.length) {
+    const mayor = Math.max(...pesoDeTramos(bounds)) * bytesPorPeso;
+    if (mayor > MAX_PART_BYTES) {
+      console.log(
+        `  ${country}: los cortes anteriores dejarian una parte de ` +
+          `${(mayor / 1048576).toFixed(0)} MB, por encima del limite. Se recalculan.`,
+      );
+      bounds = [];
+    }
+  }
+
   if (!bounds || bounds.length === 0) {
     const nParts = Math.max(2, Math.ceil(bytes / MAX_PART_BYTES));
 
@@ -484,17 +537,6 @@ function splitDb(sourcePath, country, outDir, previousBounds) {
      * el indice FTS- pero es proporcional, que es lo unico que hace falta para
      * repartir, y se calcula en una sola pasada.
      */
-    const TEXTO = [
-      'name', 'brands', 'quantity', 'image_url', 'ingredients_text',
-      'additives', 'allergens', 'nutriscore_grade', 'implausible',
-    ];
-    const BYTES_FIJOS = 120; // codigo de barras, numericos y banderas
-    const peso = TEXTO.map((c) => `length(coalesce(${c},''))`).join(' + ');
-    const filas = src
-      .prepare(`SELECT barcode, ${peso} + ${BYTES_FIJOS} AS peso FROM products ORDER BY barcode`)
-      .all();
-
-    const totalPeso = filas.reduce((t, f) => t + f.peso, 0);
     const objetivo = totalPeso / nParts;
     bounds = [];
     let acumulado = 0;
