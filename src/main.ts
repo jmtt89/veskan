@@ -443,6 +443,42 @@ function onlineChip(): SafeHtml {
   `;
 }
 
+/**
+ * Fotogramas seguidos sin una sola deteccion antes de sugerir otra via.
+ *
+ * A 200 ms por fotograma son unos 20 segundos: suficiente para no molestar a
+ * quien todavia esta encuadrando, y bastante antes de que se rinda.
+ */
+const FOTOGRAMAS_SIN_SUERTE = 100;
+
+/**
+ * Aviso cuando la camara analiza y no encuentra nada.
+ *
+ * El caso real: una webcam de portatil es de foco fijo y esta calibrada para
+ * una cara a medio metro. Medido sobre una de 1280x720, no hay ninguna
+ * distancia que de a la vez pixeles suficientes y nitidez: lejos el codigo
+ * ocupa 0,9 px por modulo, y cerca ya esta desenfocado. El motor recibe
+ * fotogramas legitimos en los que no hay nada legible, asi que no hay error
+ * que mostrar y el usuario se queda mirando un contador que sube.
+ *
+ * Las dos vias que si funcionan ya estaban ahi abajo; lo que faltaba era
+ * decirlo en el momento en que hacen falta.
+ */
+function pistaSinSuerte() {
+  const d = state.diagnostics;
+  if (!d || d.detections > 0 || d.framesAnalyzed < FOTOGRAMAS_SIN_SUERTE) return raw('');
+  return html`<div class="install-card">
+    <span aria-hidden="true" style="font-size:1.2rem">◎</span>
+    <div>
+      <strong>¿No hay manera?</strong>
+      <span>
+        Muchas webcams de portátil son de foco fijo y no llegan a resolver las barras.
+        Prueba con <strong>Foto</strong>, o escribe el <strong>Código</strong> a mano.
+      </span>
+    </div>
+  </div>`;
+}
+
 function diagnosticsPanel(): SafeHtml {
   const d = state.diagnostics;
   if (!d || !state.diagOpen) return raw('');
@@ -555,6 +591,7 @@ function scanView(): SafeHtml {
           : raw('')}
         ${activo
           ? html`
+              ${pistaSinSuerte()}
               <div class="trio">
                 <label class="tool" for="photo-input"><span aria-hidden="true">▣</span>Foto</label>
                 <button class="tool" data-action="open-manual">
