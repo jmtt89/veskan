@@ -45,7 +45,7 @@ Las cuatro verificadas. Cada una responde a otra cosa; ninguna sirve sola.
 |---|---|---|---|---|
 | Reglamento 1333/2008 vía API Cellar | ¿está permitido? | 339 números E | 2026 | legislación UE |
 | IARC Monographs | ¿causa cáncer? | pocos, decisivos | sí | — |
-| EFSA OpenFoodTox 3.0 | ¿qué daño, a qué dosis? | 233 con datos, 73 con IDA | 2026 | CC-BY-ND |
+| EFSA OpenFoodTox 3.0 | ¿qué daño, a qué dosis? | 382 emparejables, 73 con IDA | 2026 | CC-BY-ND |
 | Taxonomía de Open Food Facts | ¿se supera el límite? | 65 | **no, 2019** | ODbL |
 
 Sobre la CC-BY-ND: prohíbe **republicar su tabla**, no usar los hechos. Se
@@ -137,9 +137,23 @@ Por eso los 46 se revisan **a mano** y la lectura queda escrita en `base`.
 - De 46 aditivos con efecto, **26 dicen solo `systemic`** y 5 `not reported`.
   Más de la mitad de las etiquetas no sirven; hay que caer al siguiente peldaño
   en vez de inventar una frase sobre una etiqueta vacía.
-- El cruce OpenFoodTox ↔ Open Food Facts es **por nombre normalizado**, no por
-  identificador: 285 emparejamientos entre 7.880 sustancias. Habrá falsos
-  positivos y se revisan uno a uno.
+- El cruce OpenFoodTox ↔ Open Food Facts es **por nombre**, no por
+  identificador: OpenFoodTox no indexa por numero E -solo 7 sustancias lo
+  llevan en el nombre-. Medido, el cruce mejora mucho al relajarlo:
+
+  | cruce | aditivos | apariciones cubiertas |
+  |---|---|---|
+  | igualdad exacta del nombre normalizado | 233 | 63,7% |
+  | + tratar singular y plural como uno | 305 | 75,9% |
+  | + propagar entre padre (`E450`) e hijos (`E450i`) | **382** | **84,9%** |
+
+  La propagacion padre/hijo es un punto de partida, no una medicion: que
+  `Disodium diphosphate` tenga datos no implica que todos los difosfatos se
+  comporten igual. Se marca como **heredado** en `base`.
+
+  Y el cruce laxo tiene trampas comprobadas: `De-oiled lecithin` no es la
+  lecitina E322 y `Cross-linked sodium CMC` no es el E466. Por eso cada
+  emparejamiento entra al fichero revisable con el nombre de origen al lado.
 - Los campos estructurados de toxicidad (`TestRs.Toxicity`,
   `TargetSystemOrganToxicity.*`) existen en el esquema y están **vacíos**: 0 de
   65. El dato solo vive en `...RemarksOnResults.Other`, texto libre.
