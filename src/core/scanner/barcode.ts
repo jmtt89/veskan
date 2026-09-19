@@ -20,8 +20,20 @@ export interface ScanResult {
   engine: 'native' | 'zxing';
 }
 
-const NATIVE_FORMATS: BarcodeFormat[] = ['ean_13', 'ean_8', 'upc_a', 'upc_e', 'code_128'];
-const ZXING_FORMATS = ['EAN-13', 'EAN-8', 'UPC-A', 'UPC-E', 'Code128', 'ITF'];
+export const NATIVE_FORMATS: BarcodeFormat[] = ['ean_13', 'ean_8', 'upc_a', 'upc_e', 'code_128'];
+/**
+ * Deliberadamente los MISMOS que `NATIVE_FORMATS`, y en particular SIN ITF.
+ *
+ * ITF (Interleaved 2 of 5) es continuo, sin patron de inicio/fin unico y sin
+ * digito de control obligatorio: cualquier serie de franjas paralelas -un
+ * teclado, una rejilla, el ruido de una webcam de 720p- decodifica como un ITF
+ * «valido». Con el en la lista, el respaldo detectaba sin parar y el EAN real
+ * no llegaba nunca. En el movil no ocurria porque el motor nativo no lo lleva.
+ *
+ * Ningun producto de consumo lo usa: ITF-14 va en la caja de transporte, no en
+ * la unidad que escanea el usuario.
+ */
+export const ZXING_FORMATS = ['EAN-13', 'EAN-8', 'UPC-A', 'UPC-E', 'Code128'];
 
 interface NativeBarcodeDetector {
   detect(source: CanvasImageSource | ImageBitmapSource): Promise<
@@ -94,7 +106,11 @@ class ZxingEngine implements BarcodeEngine {
       tryRotate: true,
       tryInvert: true,
       tryDownscale: true,
-      maxNumberOfSymbols: 1,
+      // Mas de uno a proposito: si en el fotograma cae un simbolo espurio, con
+      // el limite en 1 se llevaba el unico hueco y el codigo bueno se perdia.
+      // Quien elige es `tick()`, que se queda con el primero que pasa el
+      // digito de control.
+      maxNumberOfSymbols: 5,
     });
     return results
       .filter((r) => r.text && r.isValid !== false)
