@@ -81,6 +81,9 @@ interface AppState {
   history: HistoryEntry[];
   searchResults: Assessment['product'][];
   scannerActive: boolean;
+  /** Modo disparo: no se analiza en bucle, el usuario captura cuando quiere. */
+  captureMode: boolean;
+  capturando: boolean;
   snapshotAvailable: boolean;
   diagnostics?: ScannerDiagnostics;
   torchOn: boolean;
@@ -136,6 +139,8 @@ const state: AppState = {
   history: [],
   searchResults: [],
   scannerActive: false,
+  captureMode: false,
+  capturando: false,
   snapshotAvailable: false,
   catalogs: [],
   torchOn: false,
@@ -472,10 +477,11 @@ function pistaSinSuerte() {
     <div>
       <strong>¿No hay manera?</strong>
       <span>
-        Muchas webcams de portátil son de foco fijo y no llegan a resolver las barras.
-        Prueba con <strong>Foto</strong>, o escribe el <strong>Código</strong> a mano.
+        Muchas webcams de portátil son de foco fijo. Prueba a encuadrar y disparar:
+        la foto sale a más resolución que el vídeo.
       </span>
     </div>
+    <button class="mini primary" data-action="toggle-capture">Disparar</button>
   </div>`;
 }
 
@@ -487,6 +493,7 @@ function diagnosticsPanel(): SafeHtml {
       <div class="diag-grid">
         <span>Motor</span><span>${d.engine === 'native' ? 'nativo del navegador' : 'zxing-wasm'}</span>
         <span>Resolución</span><span>${d.resolution ?? '—'}</span>
+        <span>Última foto</span><span>${d.lastCapture ?? '—'}</span>
         <span>Fotogramas</span><span>${d.framesAnalyzed}</span>
         <span>Detecciones</span><span>${d.detections}</span>
         <span>Descartes (dígito control)</span><span>${d.rejectedByChecksum}</span>
@@ -592,6 +599,18 @@ function scanView(): SafeHtml {
         ${activo
           ? html`
               ${pistaSinSuerte()}
+              ${state.captureMode
+                ? html`<button
+                    class="primary big"
+                    data-action="capture"
+                    ${raw(state.capturando ? 'disabled' : '')}
+                  >
+                    ${state.capturando ? 'Leyendo…' : 'Capturar'}
+                  </button>
+                  <button class="ghost" data-action="toggle-capture">
+                    Volver al escaneo continuo
+                  </button>`
+                : raw('')}
               <div class="trio">
                 <label class="tool" for="photo-input"><span aria-hidden="true">▣</span>Foto</label>
                 <button class="tool" data-action="open-manual">
@@ -1714,6 +1733,7 @@ async function attachCamera(): Promise<void> {
   if (scanner) return;
   scanner = new CameraScanner({
     video: videoEl,
+    manual: state.captureMode,
     onResult: (result) => void lookup(result.barcode),
     onDiagnostics: (d) => {
       state.diagnostics = d;
@@ -1749,6 +1769,30 @@ async function attachCamera(): Promise<void> {
       kind: denegado ? 'denied' : 'error',
       detail: err instanceof Error ? err.name : undefined,
     };
+    render();
+  }
+}
+
+/**
+ * Dispara una captura y la decodifica.
+ *
+ * Si no sale nada NO se avisa con un cartel: fallar un disparo es normal y lo
+ * natural es volver a intentarlo. Lo que si se deja es el rastro en el
+ * diagnostico, con la resolucion que dio la foto, que es el dato que dice si
+ * esta via aporta algo en esta camara.
+ */
+async function dispararCaptura(): Promise<void> {
+  if (!scanner || state.capturando) return;
+  state.capturando = true;
+  render();
+  try {
+    const hit = await scanner.capturar();
+    if (!hit) state.error = 'No se leyó ningún código en la foto. Prueba a acercarte o mejorar la luz.';
+    else state.error = undefined;
+  } catch (err) {
+    state.error = err instanceof Error ? err.message : 'No se pudo tomar la foto.';
+  } finally {
+    state.capturando = false;
     render();
   }
 }
@@ -1912,6 +1956,21 @@ root.addEventListener('click', (event) => {
     }
 
     // --- Camara / entorno ---
+    case 'toggle-capture':
+      // El modo se fija al construir el escaner, asi que hay que rehacerlo.
+      // Se conservan los contadores del diagnostico para no perder el rastro
+      // de lo que acaba de pasar.
+      state.captureMode = !state.captureMode;
+      if (state.scannerActive) {
+        scanner?.stop();
+        scanner = undefined;
+        void attachCamera();
+      }
+      render();
+      break;
+    case 'capture':
+      void dispararCaptura();
+      break;
     case 'toggle-diag':
       state.diagOpen = !state.diagOpen;
       render();

@@ -198,8 +198,19 @@ export interface ScannerDiagnostics {
   detections: number;
   rejectedByChecksum: number;
   resolution?: string;
+  /** Resolucion de la ultima foto disparada a mano, que puede superar la del video. */
+  lastCapture?: string;
   lastError?: string;
   lastRejected?: string;
+}
+
+/** Lo unico que usamos de `ImageCapture`, que no esta en todas las lib.dom. */
+interface ImageCaptureLike {
+  takePhoto(opts?: { imageWidth?: number; imageHeight?: number }): Promise<Blob>;
+  getPhotoCapabilities?(): Promise<{
+    imageWidth?: { max?: number };
+    imageHeight?: { max?: number };
+  }>;
 }
 
 export interface CameraOptions {
@@ -210,6 +221,14 @@ export interface CameraOptions {
   /** Se llama tras cada intento, para refrescar el panel de diagnostico */
   onDiagnostics?: (diagnostics: ScannerDiagnostics) => void;
   intervalMs?: number;
+  /**
+   * No analizar en bucle: esperar a que el usuario dispare con `capturar()`.
+   *
+   * Es el modo util con una webcam de foco fijo, donde el bucle continuo no
+   * puede acertar nunca -no hay distancia con pixeles suficientes Y nitidez- y
+   * en cambio una captura suelta puede ir a resolucion fotografica.
+   */
+  manual?: boolean;
 }
 
 /**
@@ -276,7 +295,9 @@ export class CameraScanner {
     this.diagnostics.engine = this.engine.name;
     this.opts.onDiagnostics?.({ ...this.diagnostics });
 
-    this.timer = setInterval(() => void this.tick(), this.opts.intervalMs ?? 200);
+    if (!this.opts.manual) {
+      this.timer = setInterval(() => void this.tick(), this.opts.intervalMs ?? 200);
+    }
   }
 
   /** Enfoque continuo donde el navegador lo permita: clave a corta distancia. */
@@ -336,6 +357,70 @@ export class CameraScanner {
     if (!ctx) return undefined;
     ctx.drawImage(video, sx, sy, cw, ch, 0, 0, cw, ch);
     return ctx.getImageData(0, 0, cw, ch);
+  }
+
+  /**
+   * Captura una foto suelta y la decodifica.
+   *
+   * La diferencia con un fotograma del bucle no es el encuadre sino los
+   * pixeles: `takePhoto()` entrega la resolucion FOTOGRAFICA de la camara, que
+   * en muchas webcams supera a la del video. Sobre una imagen nitida eso es
+   * justo lo que falta: a 40 cm el codigo se ve perfectamente enfocado pero
+   * solo da 0,9 px por modulo a 1280x720, y el decodificador necesita ~1.
+   *
+   * `ImageCapture` no existe en Safari, asi que se cae a tomar el fotograma
+   * del video. Ahi no se gana resolucion, pero tampoco se pierde nada: en el
+   * movil quien enfoca de verdad es el sistema y el bucle ya acierta.
+   */
+  async capturar(): Promise<ScanResult | undefined> {
+    if (!this.engine) throw new Error('La camara no esta lista.');
+    const bitmap = await this.tomarImagen();
+    try {
+      this.diagnostics.lastCapture = `${bitmap.width}x${bitmap.height}`;
+      const results = await this.engine.detect(bitmap);
+      this.diagnostics.framesAnalyzed++;
+      if (results.length > 0) this.diagnostics.detections++;
+      for (const r of results) {
+        const normalized = normalizeBarcode(r.barcode);
+        if (!isValidEan(normalized)) {
+          this.diagnostics.rejectedByChecksum++;
+          this.diagnostics.lastRejected = r.barcode;
+          continue;
+        }
+        const hit = { ...r, barcode: normalized };
+        this.lastEmitted = { code: normalized, at: Date.now() };
+        this.opts.onDiagnostics?.({ ...this.diagnostics });
+        this.opts.onResult(hit);
+        return hit;
+      }
+      this.opts.onDiagnostics?.({ ...this.diagnostics });
+      return undefined;
+    } finally {
+      bitmap.close();
+    }
+  }
+
+  /** La mejor imagen que esta camara sepa dar en este instante. */
+  private async tomarImagen(): Promise<ImageBitmap> {
+    const track = this.stream?.getVideoTracks()[0];
+    const Ctor = (globalThis as { ImageCapture?: new (t: MediaStreamTrack) => ImageCaptureLike })
+      .ImageCapture;
+    if (track && Ctor) {
+      try {
+        const cap = new Ctor(track);
+        // Se pide el modo fotografico mas grande que declare la camara.
+        const caps = await cap.getPhotoCapabilities?.();
+        const opciones =
+          caps?.imageWidth?.max && caps?.imageHeight?.max
+            ? { imageWidth: caps.imageWidth.max, imageHeight: caps.imageHeight.max }
+            : undefined;
+        const blob = await cap.takePhoto(opciones);
+        return await createImageBitmap(blob);
+      } catch {
+        // Camara sin modo foto, o permiso denegado para el: se sigue abajo.
+      }
+    }
+    return await createImageBitmap(this.opts.video);
   }
 
   private async tick(): Promise<void> {
