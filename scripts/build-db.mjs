@@ -729,10 +729,21 @@ async function main() {
     flushAll();
   }
 
-  // Tope por pais. Sin tope para los pequenos; los grandes se recortan para
-  // caber en el limite de 100 MB por archivo de GitHub.
+  /**
+   * Tope opcional de productos por pais, con `--max-per-country=pais:N`.
+   *
+   * SIN tope por defecto. Lo tuvo -`united-states:300000`- de cuando un pais
+   * grande no cabia en el limite de 100 MB por archivo de GitHub y no existia
+   * el partido. Al quitarlo del workflow seguia aplicandose, porque estaba
+   * tambien aqui como valor por defecto: Estados Unidos volvio a publicarse con
+   * exactamente 300.000 productos de sus 970.565, y el unico indicio fue lo
+   * redondo de la cifra.
+   *
+   * Un valor por defecto que recorta datos no deberia existir: si alguien
+   * quiere recortar, que lo pida.
+   */
   const caps = {};
-  for (const pair of String(args['max-per-country'] ?? 'united-states:300000').split(',')) {
+  for (const pair of String(args['max-per-country'] ?? '').split(',')) {
     const [country, n] = pair.split(':');
     if (country && n) caps[country.trim()] = Number(n);
   }
