@@ -149,6 +149,19 @@ export function scoreDial(score: HealthScore): SafeHtml {
   `;
 }
 
+/**
+ * El codigo de barras, a la vista y seleccionable.
+ *
+ * No estaba en ninguna parte de la ficha: quien queria comprobar un producto
+ * -contrastarlo con Open Food Facts, o simplemente decir cual es- no tenia de
+ * donde sacarlo despues de escanearlo. Va en monoespaciada porque son digitos
+ * que se leen de uno en uno.
+ */
+function codigoVisible(product: Product): SafeHtml {
+  if (!product.barcode) return raw('');
+  return html`<div class="verdict-code mono" title="Código de barras">${product.barcode}</div>`;
+}
+
 /** Cabecera del veredicto: nota, banda, nombre y marca. */
 export function verdict(product: Product, score: HealthScore): SafeHtml {
   const marca = product.brands?.join(', ');
@@ -160,6 +173,7 @@ export function verdict(product: Product, score: HealthScore): SafeHtml {
         <span class="band-pill band-${score.band}">${BAND_LABELS[score.band]}</span>
         <h2>${product.name ?? 'Producto sin nombre'}</h2>
         ${sub ? html`<div class="verdict-sub">${sub}</div>` : raw('')}
+        ${codigoVisible(product)}
       </div>
     </section>
   `;
@@ -849,6 +863,7 @@ export function cosmeticView(product: Product, a: CosmeticAssessment): SafeHtml 
         <span class="band-pill band-neutral">Cosmética</span>
         <h2>${product.name ?? 'Producto sin nombre'}</h2>
         ${sub ? html`<div class="verdict-sub">${sub}</div>` : raw('')}
+        ${codigoVisible(product)}
       </div>
     </section>
 

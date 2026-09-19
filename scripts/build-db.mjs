@@ -27,6 +27,7 @@ import { leerNutrientes } from './lib/nutrients.mjs';
 import { ingredientesDe, nombreDe } from './lib/nombres.mjs';
 import { banderasDe } from './lib/categorias.mjs';
 import { tipoDeBebida } from './lib/bebidas.mjs';
+import { refImagenFrontal } from './lib/imagenes.mjs';
 import { createReadStream, mkdirSync, readFileSync, statSync, existsSync, unlinkSync, writeFileSync } from 'node:fs';
 import { createGunzip } from 'node:zlib';
 import { createInterface } from 'node:readline';
@@ -145,7 +146,7 @@ export function mapProduct(p) {
     name,
     brands: p.brands ?? null,
     quantity: p.quantity ?? null,
-    image_url: p.image_front_small_url ?? p.image_front_url ?? null,
+    image_ref: refImagenFrontal(p),
     ingredients_text: ingredientesDe(p),
     additives: list(p.additives_tags),
     allergens: list(p.allergens_tags),
@@ -204,7 +205,7 @@ export function mapProduct(p) {
 
 const API_FIELDS = [
   'code','product_name','generic_name','brands','quantity','lang',
-  'image_front_small_url','image_front_url','ingredients_text',
+  'images','ingredients_text',
   'additives_tags','allergens_tags','categories_tags','countries_tags',
   'nutriments','nutriscore_data','nutriscore_grade','nova_group','last_modified_t','popularity_key',
   // Campos de ORIGEN de los nutrientes. Sin ellos no se pueden leer los
@@ -481,7 +482,7 @@ function splitDb(sourcePath, country, outDir, previousBounds) {
    * siguen valiendo.
    */
   const TEXTO = [
-    'name', 'brands', 'quantity', 'image_url', 'ingredients_text',
+    'name', 'brands', 'quantity', 'image_ref', 'ingredients_text',
     'additives', 'allergens', 'labels', 'nutriscore_grade', 'implausible',
     'estimados', 'drink_type',
   ];

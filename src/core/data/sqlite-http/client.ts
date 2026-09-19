@@ -11,6 +11,7 @@ import type { ImplausibleNutriment, OrigenValor, Product } from '../../types.js'
 import type { OpenStrategy } from './sqlite.worker.js';
 import { send, type ProgressHandler } from './worker-pool.js';
 import type { DeltaFile } from './delta-sync.js';
+import { urlImagenFrontal } from '../off-images.js';
 
 export interface SqliteHttpOptions {
   /** Nombre logico, normalmente el pais. Identifica la conexion en el Worker. */
@@ -157,7 +158,7 @@ interface SnapshotRow {
   name: string | null;
   brands: string | null;
   quantity: string | null;
-  image_url: string | null;
+  image_ref: string | null;
   ingredients_text: string | null;
   additives: string | null;
   allergens: string | null;
@@ -240,8 +241,9 @@ function rowToProduct(row: SnapshotRow): Product {
     brands: splitList(row.brands),
     kind: row.is_beverage ? 'beverage' : 'food',
     quantity: row.quantity ?? undefined,
-    imageUrl: row.image_url ?? undefined,
-    imageThumbUrl: row.image_url ?? undefined,
+    // La URL se construye aqui: el catalogo solo guarda "<idioma>.<rev>".
+    imageUrl: urlImagenFrontal(row.barcode, row.image_ref, 400),
+    imageThumbUrl: urlImagenFrontal(row.barcode, row.image_ref, 200),
     ingredientsText: row.ingredients_text ?? undefined,
     additiveTags: splitList(row.additives),
     allergenTags: splitList(row.allergens),

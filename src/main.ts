@@ -477,8 +477,9 @@ function pistaSinSuerte() {
     <div>
       <strong>¿No hay manera?</strong>
       <span>
-        Muchas webcams de portátil son de foco fijo. Prueba a encuadrar y disparar:
-        la foto sale a más resolución que el vídeo.
+        Muchas webcams de portátil son de foco fijo y se quedan justo por debajo de lo
+        que hace falta. Puedes encuadrar y disparar tú; en algunas cámaras la foto sale
+        a más resolución que el vídeo, y en otras no cambia nada.
       </span>
     </div>
     <button class="mini primary" data-action="toggle-capture">Disparar</button>
@@ -819,7 +820,11 @@ function historyView(): SafeHtml {
                   (h) => html`
                     <div class="list-row">
                       <button class="list-main" data-action="open" data-barcode="${h.barcode}">
-                        <span class="thumb">${h.imageThumbUrl ? html`<img src="${h.imageThumbUrl}" alt="" loading="lazy" />` : raw('')}</span>
+                        <span class="thumb ${h.imageThumbUrl ? '' : 'thumb-vacio'}" aria-hidden="true"
+                          >${h.imageThumbUrl
+                            ? html`<img src="${h.imageThumbUrl}" alt="" loading="lazy" />`
+                            : raw('▤')}</span
+                        >
                         <span class="list-text">
                           <span class="list-name">${h.name ?? h.barcode}</span>
                           <span class="list-sub">${[h.brand, relativeTime(h.scannedAt)].filter(Boolean).join(' · ')}</span>
@@ -937,7 +942,11 @@ function searchView(): SafeHtml {
                     ${state.searchResults.map(
                       (p) => html`
                         <button class="list-main row" data-action="open" data-barcode="${p.barcode}">
-                          <span class="thumb">${p.imageThumbUrl ? html`<img src="${p.imageThumbUrl}" alt="" />` : raw('')}</span>
+                          <span class="thumb ${p.imageThumbUrl ? '' : 'thumb-vacio'}" aria-hidden="true"
+                            >${p.imageThumbUrl
+                              ? html`<img src="${p.imageThumbUrl}" alt="" />`
+                              : raw('▤')}</span
+                          >
                           <span class="list-text">
                             <span class="list-name">${p.name ?? p.barcode}</span>
                             <span class="list-sub">${[p.brands?.join(', '), p.quantity].filter(Boolean).join(' · ')}</span>

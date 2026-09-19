@@ -25,7 +25,10 @@ CREATE TABLE products (
   name              TEXT,
   brands            TEXT,
   quantity          TEXT,
-  image_url         TEXT,
+  -- Referencia compacta de la imagen frontal: "<idioma>.<rev>", p.ej. "es.37".
+  -- El volcado no trae URL de imagen; se construye en el cliente a partir de
+  -- esto y del codigo de barras. Ver `scripts/lib/imagenes.mjs`.
+  image_ref         TEXT,
   ingredients_text  TEXT,
   additives         TEXT,
   allergens         TEXT,
@@ -113,7 +116,7 @@ CREATE VIRTUAL TABLE products_fts USING fts5(
  * (lo usa la inferencia NOVA y la ficha) y `allergens` (se muestran).
  */
 export const COLUMNS = [
-  'barcode','name','brands','quantity','image_url','ingredients_text','additives','allergens','labels',
+  'barcode','name','brands','quantity','image_ref','ingredients_text','additives','allergens','labels',
   'nova_group','nutriscore_grade','nutriscore_score','energy_kj',
   'energy_kcal','fat','saturated_fat','trans_fat','carbohydrates','sugars','fiber','proteins',
   'salt','sodium','fvl','alcohol','quantity_ml','drink_type','is_beverage','is_water','is_cheese','is_fat_oil_nuts_seeds','is_red_meat',

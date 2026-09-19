@@ -2630,3 +2630,27 @@ button.link,
   font-size: 0.72rem;
   text-transform: capitalize;
 }
+
+/* El codigo de barras bajo el nombre del producto. Se puede seleccionar para
+   copiarlo: es el dato con el que el usuario contrasta el producto fuera. */
+.verdict-code {
+  margin-top: 4px;
+  font-size: 0.72rem;
+  color: var(--ink-2);
+  letter-spacing: 0.04em;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+/*
+ * Hueco de foto cuando el producto no tiene ninguna.
+ *
+ * Se conserva el recuadro para que la lista siga alineada, pero con un
+ * marcador tenue: un cuadro vacio del todo parecia una imagen que no habia
+ * cargado. No todos los productos de Open Food Facts tienen foto.
+ */
+.thumb-vacio {
+  color: var(--ink-3, var(--ink-2));
+  font-size: 1.1rem;
+  opacity: 0.35;
+}
