@@ -310,7 +310,7 @@ function main(dir, salida) {
       tag TEXT PRIMARY KEY,
       numero_e TEXT, nombre TEXT, wikidata TEXT,
       nivel INTEGER, descripcion TEXT, certeza TEXT, via TEXT,
-      ida REAL, posicion_en_nivel REAL,
+      ida REAL, posicion_en_nivel REAL, ida_sin_margen INTEGER,
       critico TEXT, sin_dosis_motivo TEXT,
       iarc TEXT, clp TEXT,
       legal_ue TEXT, retirado_ue INTEGER,
@@ -326,7 +326,7 @@ function main(dir, salida) {
   `);
 
   const insA = db.prepare(`INSERT OR REPLACE INTO aditivo VALUES
-    (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);
+    (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);
   const insP = db.prepare(`INSERT INTO prohibicion VALUES (?,?,?,?,?,?,?,?)`);
 
   let nA = 0, nP = 0;
@@ -345,6 +345,7 @@ function main(dir, salida) {
         d.gravedad?.nivel ?? null, texto(d.gravedad?.descripcion),
         texto(d.gravedad?.certeza), texto(d.gravedad?.via),
         numero(d.gravedad?.ida), numero(d.gravedad?.posicion_en_nivel),
+        d.gravedad?.ida_sin_margen ? 1 : 0,
         texto(d.oft?.critico?.toxicidad), texto(d.oft?.sin_dosis_motivo),
         texto(d.iarc?.grupo), texto(d.clp?.peor),
         d.legal ? (d.legal.ausente ? 'ausente' : (d.legal.autorizado ? 'si' : 'no')) : null,

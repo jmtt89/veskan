@@ -201,9 +201,41 @@ export interface AdditiveAssessment {
   efsaEvaluationUrl?: string;
   efsaEvaluationDate?: string;
   description?: string;
+  /** Prohibido explicitamente en alguna jurisdiccion */
+  banned: boolean;
+  /** Normas que lo prohiben, con la frase literal para poder citarla */
+  bans: AdditiveBan[];
+  /** Nivel de peligro, 1 (genotoxico o carcinogenico) a 8 (local o digestivo) */
+  hazardLevel?: number;
+  hazardDescription?: string;
+  /** Cuanto se sabe del nivel: confirmada, probable, posible, establecida */
+  hazardCertainty?: string;
+  /** Ingesta diaria admisible, mg/kg de peso corporal */
+  adi?: number;
+  /** Por que no hay dosis. No es lo mismo una laguna que una decision. */
+  noDoseReason?: string;
+  iarcGroup?: string;
+  clpWorst?: string;
+  /** Que decidio la penalizacion: exposicion, peligro, prohibicion... */
+  penaltyReason: AdditivePenaltyReason;
   /** Penalizacion aplicada al score global, en puntos de 0-100 */
   penalty: number;
 }
+
+export interface AdditiveBan {
+  jurisdiction: string;
+  reference?: string;
+  /** La frase de la norma, literal */
+  verb?: string;
+  partial?: boolean;
+}
+
+/**
+ * Que peldaño decidio la penalizacion. No hay «sin evaluar» aparte: si no
+ * encaja en ningun peldaño de peligro, cae en `no-data`, que ya es un peldaño
+ * con su valor.
+ */
+export type AdditivePenaltyReason = 'banned' | 'hazard' | 'no-data';
 
 export type PahoSealId =
   | 'sodium'

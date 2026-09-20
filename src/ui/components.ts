@@ -17,7 +17,11 @@ import type {
   Product,
 } from '../core/types.js';
 import { BAND_LABELS } from '../core/scoring/engine.js';
-import { ADDITIVE_CLASS_LABELS, POPULATION_GROUP_LABELS } from '../core/scoring/additives.js';
+import {
+  ADDITIVE_CLASS_LABELS,
+  NO_DOSE_LABELS,
+  POPULATION_GROUP_LABELS,
+} from '../core/scoring/additives.js';
 import { PAHO_SEAL_LABELS } from '../core/scoring/paho.js';
 import { NOVA_DESCRIPTIONS } from '../core/scoring/nova.js';
 
@@ -529,6 +533,33 @@ const RISK_CHIP: Record<AdditiveAssessment['risk'], { label: string; glyph: stri
   unknown: { label: 'Sin evaluar', glyph: '○', cls: 'risk-unknown' },
 };
 
+/**
+ * La etiqueta sale de POR QUE penaliza, no solo de la exposicion.
+ *
+ * Tomarla de `risk` daba un absurdo visible: el amaranto esta prohibido en
+ * Estados Unidos desde 1976 y EFSA no le encuentra riesgo de sobreexposicion,
+ * asi que la ficha decia «Sin riesgo» sobre un aditivo prohibido.
+ */
+function additiveChip(a: AdditiveAssessment): { label: string; glyph: string; cls: string } {
+  if (a.penaltyReason === 'banned') {
+    return { label: 'Prohibido', glyph: '⊘', cls: 'sev-prohibited' };
+  }
+  if (a.penaltyReason === 'hazard' && a.hazardLevel !== undefined) {
+    if (a.hazardLevel <= 2) return { label: 'Peligro alto', glyph: '▲', cls: 'risk-high' };
+    if (a.hazardLevel <= 6) return { label: 'Peligro moderado', glyph: '▲', cls: 'risk-moderate' };
+    return { label: 'Peligro bajo', glyph: '●', cls: 'risk-low' };
+  }
+  if (a.penaltyReason === 'no-data') {
+    // El peldaño es el mismo, pero saber POR QUE no hay dosis cambia lo que se
+    // le puede decir al usuario: una laguna no es una evaluacion favorable.
+    const falta = a.noDoseReason === 'datos-incompletos' || a.noDoseReason === 'sin-estudio-critico';
+    return falta
+      ? { label: 'Faltan datos', glyph: '○', cls: 'risk-unknown' }
+      : { label: 'Sin evaluar', glyph: '○', cls: 'risk-unknown' };
+  }
+  return RISK_CHIP[a.risk];
+}
+
 /** Lista de aditivos. Cada uno abre su hoja con la evaluacion completa. */
 function additivesEvidence(additives: AdditiveAssessment[]): SafeHtml {
   if (additives.length === 0) {
@@ -536,7 +567,7 @@ function additivesEvidence(additives: AdditiveAssessment[]): SafeHtml {
   }
   return html`
     ${additives.map((a) => {
-      const chip = RISK_CHIP[a.risk];
+      const chip = additiveChip(a);
       return html`
         <button class="add-row" data-action="open-additive" data-tag="${a.tag}">
           <span class="mono add-e">${eNumberOf(a)}</span>
@@ -547,15 +578,16 @@ function additivesEvidence(additives: AdditiveAssessment[]): SafeHtml {
       `;
     })}
     <p class="ev-note">
-      Se valora el riesgo de sobreexposición que evalúa EFSA, no el peligro teórico al margen de
-      la dosis. Toca cada aditivo para ver su evaluación.
+      Se valoran dos cosas distintas: el <strong>peligro</strong> de la sustancia y la
+      <strong>exposición</strong> real que calcula EFSA. Y si alguna jurisdicción lo prohíbe,
+      eso pesa por encima de las dos. Toca cada aditivo para ver de dónde sale su nota.
     </p>
   `;
 }
 
 /** Hoja de detalle de un aditivo. Es donde vive el matiz riesgo/peligro. */
 export function additiveSheet(a: AdditiveAssessment): SafeHtml {
-  const chip = RISK_CHIP[a.risk];
+  const chip = additiveChip(a);
   const grupos = [...new Set([...a.overexposedGroupsMean, ...a.overexposedGroupsP95])]
     .map((g) => POPULATION_GROUP_LABELS[g] ?? g)
     .join(', ');
@@ -570,6 +602,34 @@ export function additiveSheet(a: AdditiveAssessment): SafeHtml {
       ${a.classes.map((c) => ADDITIVE_CLASS_LABELS[c] ?? c).join(' · ') || 'Aditivo alimentario'}
     </div>
     ${a.description ? html`<p class="add-desc">${a.description}</p>` : raw('')}
+    ${a.bans.length
+      ? html`<div class="add-what">
+          <strong>Prohibido en ${a.bans.map((b) => b.jurisdiction).join(', ')}.</strong>
+          ${a.bans[0]!.verb ? html`<span class="add-verb">«${a.bans[0]!.verb}»</span>` : raw('')}
+          ${a.bans[0]!.reference ? html` <span class="mono">${a.bans[0]!.reference}</span>` : raw('')}
+          ${a.bans.some((b) => b.partial)
+            ? raw(' La prohibición es parcial: no alcanza a todos los usos.')
+            : raw('')}
+        </div>`
+      : raw('')}
+    ${a.hazardDescription
+      ? html`<p class="add-groups">
+          <strong>Naturaleza del daño:</strong> ${a.hazardDescription}${a.hazardCertainty
+            ? ` (certeza ${a.hazardCertainty})`
+            : ''}.${a.adi !== undefined
+            ? ` Ingesta diaria admisible: ${formatNum(a.adi)} mg/kg de peso corporal.`
+            : ''}
+        </p>`
+      : raw('')}
+    ${a.iarcGroup || a.clpWorst
+      ? html`<p class="add-groups">
+          ${a.iarcGroup ? `IARC grupo ${a.iarcGroup}.` : ''}
+          ${a.clpWorst ? ` Clasificación CLP de la UE: ${a.clpWorst}.` : ''}
+        </p>`
+      : raw('')}
+    ${a.noDoseReason && !a.bans.length
+      ? html`<p class="add-groups">${NO_DOSE_LABELS[a.noDoseReason] ?? ''}.</p>`
+      : raw('')}
     <div class="add-what"><strong>Qué mide esto.</strong> ${RISK_EXPLANATION[a.risk]}</div>
     ${grupos
       ? html`<p class="add-groups">

@@ -119,7 +119,79 @@ describe('Aditivos', () => {
   it('E951 (aspartamo) no tiene riesgo de sobreexposicion segun EFSA', () => {
     const r = assessAdditives(['en:e951'], taxonomy);
     expect(r.assessments[0]!.risk).toBe('none');
-    expect(r.assessments[0]!.penalty).toBe(0);
+  });
+
+  it('el unico cero es no llevar aditivos', () => {
+    // Un aditivo evaluado y sin problemas penaliza POCO, pero penaliza:
+    // llevarlo no es lo mismo que no llevarlo. La version anterior le daba
+    // cero a `risk: none`, y por eso el amaranto -prohibido en Estados Unidos
+    // desde 1976- puntuaba 0.
+    expect(assessAdditives([], taxonomy).totalPenalty).toBe(0);
+    expect(assessAdditives([], taxonomy).score).toBe(100);
+    for (const tag of ['en:e951', 'en:e330', 'en:e300', 'en:e999999']) {
+      const r = assessAdditives([tag], taxonomy);
+      expect(r.totalPenalty).toBeGreaterThan(0);
+      expect(r.score).toBeLessThan(100);
+    }
+  });
+
+  it('un aditivo prohibido pesa mas que cualquier otra senal', () => {
+    // Que este prohibido en alguna jurisdiccion no se modula por region: una
+    // prohibicion no se decreta sin expediente detras.
+    const prohibido = assessAdditives(['en:e171'], taxonomy).assessments[0]!;
+    const altoRiesgo = assessAdditives(['en:e250'], taxonomy).assessments[0]!;
+    expect(prohibido.banned).toBe(true);
+    expect(prohibido.penaltyReason).toBe('banned');
+    expect(prohibido.bans.length).toBeGreaterThan(0);
+    expect(prohibido.penalty).toBeGreaterThan(altoRiesgo.penalty);
+  });
+
+  it('el peligro fija el peldaño y la exposicion es un recargo encima', () => {
+    // `riesgo = peligro x exposicion`. No son dos candidatos entre los que
+    // elegir: el peligro dice a que peldaño va y la exposicion dice si la
+    // gente llega de verdad a esa dosis.
+    //
+    // La carragenina lo enseña: nivel 5 de peligro (7 puntos, modulado por su
+    // posicion dentro del nivel) MAS 10 por sobreexposicion alta MAS 5 por
+    // grupos vulnerables.
+    const e407 = assessAdditives(['en:e407'], taxonomy).assessments[0]!;
+    expect(e407.risk).toBe('high');
+    expect(e407.hazardLevel).toBe(5);
+    expect(e407.penaltyReason).toBe('hazard');
+    expect(e407.penalty).toBeGreaterThan(10 + 5);
+  });
+
+  it('dos aditivos igual de potentes acaban en extremos opuestos', () => {
+    // El caso que justifica que la exposicion sea un eje aparte: amaranto y
+    // nitrito tienen IDA casi identica (0,15 y 0,1) y EFSA concluye «sin
+    // riesgo» para uno y «riesgo alto» para el otro, porque uno casi no se usa
+    // y el otro esta en todo.
+    const e123 = assessAdditives(['en:e123'], taxonomy).assessments[0]!;
+    const e250 = assessAdditives(['en:e250'], taxonomy).assessments[0]!;
+    expect(e123.risk).toBe('none');
+    expect(e250.risk).toBe('high');
+    // Aun asi el amaranto no sale barato: esta prohibido en Estados Unidos.
+    expect(e123.banned).toBe(true);
+  });
+
+  it('el peldaño «sin datos» no cambia de valor por saber por que faltan', () => {
+    // El motivo de no tener dosis NO mueve la penalizacion: el peldaño es el
+    // mismo. Lo que cambia es lo que se le puede decir al usuario, y eso vive
+    // en la explicacion, no en el numero.
+    const sinEvaluar = assessAdditives(['en:e999999'], taxonomy).assessments[0]!;
+    expect(sinEvaluar.penaltyReason).toBe('no-data');
+    expect(sinEvaluar.penalty).toBe(3);
+  });
+
+  it('la posicion dentro del nivel modula la potencia', () => {
+    // Entre dos sustancias del mismo nivel pesa mas la de dosis menor: x1,25
+    // la mas potente del nivel, x0,75 la menos.
+    const conNivel = Object.entries(taxonomy)
+      .filter(([, e]) => e.nivel !== undefined && e.posNivel !== undefined && !e.prohibido)
+      .map(([t]) => assessAdditives([t], taxonomy).assessments[0]!)
+      .filter((a) => a.penaltyReason === 'hazard');
+    if (conNivel.length === 0) return;
+    for (const a of conNivel) expect(a.penalty).toBeGreaterThan(0);
   });
 
   it('acumular aditivos penaliza cada vez menos', () => {
@@ -136,7 +208,8 @@ describe('Aditivos', () => {
   it('un aditivo sin evaluar penaliza poco, no se le presume culpable', () => {
     const r = assessAdditives(['en:e999999'], taxonomy);
     expect(r.assessments[0]!.risk).toBe('unknown');
-    expect(r.assessments[0]!.penalty).toBeLessThan(3);
+    // El peldaño mas bajo de la escala, muy por debajo de un nivel 8 (4).
+    expect(r.assessments[0]!.penalty).toBeLessThanOrEqual(3);
   });
 
   it('la puntuacion del bloque nunca sale del rango 0-100', () => {
