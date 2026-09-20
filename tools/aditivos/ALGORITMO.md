@@ -203,6 +203,28 @@ misma.
 
 **Ningún peldaño vale 0.** El 0 es no llevar aditivos.
 
+### La prohibición no se ajusta por región
+
+**Decidido:** prohibido en cualquier jurisdiccion penaliza igual en todos los
+paises. No se rebaja porque el producto sea legal donde se vende.
+
+El razonamiento: una prohibicion no se decreta sin expediente. El E171 se
+retiro en la UE porque EFSA **no pudo descartar genotoxicidad**, y esa
+evidencia existe igual en Mexico aunque su normativa sea mas laxa. Esta
+herramienta informa de lo que se consume, no de lo que es legal consumir.
+
+Medido: afecta a **9.598 apariciones (0,70%)** y a **113 de 4.769 productos
+mexicanos con aditivos (2,4%)**.
+
+CONSECUENCIA QUE HAY QUE ASUMIR: el principio dice «prohibido en alguna
+jurisdiccion», pero hoy **solo miramos una**. La unica fuente regulatoria es
+europea, asi que en la practica se aplica el criterio de la UE. El efecto es
+asimetrico: el bromato potasico (E924b) esta prohibido en la UE y permitido en
+Estados Unidos y lo detectamos, pero un aditivo permitido en la UE y prohibido
+en otra parte se nos escaparia. Para que el principio sea el enunciado hace
+falta al menos una segunda jurisdiccion -la FDA publica sus retiradas y no se
+ha investigado-.
+
 ---
 
 ## Seis trampas comprobadas
