@@ -21,6 +21,7 @@ import {
   ADDITIVE_CLASS_LABELS,
   NO_DOSE_LABELS,
   POPULATION_GROUP_LABELS,
+  describePenaltyReason,
 } from '../core/scoring/additives.js';
 import { PAHO_SEAL_LABELS } from '../core/scoring/paho.js';
 import { NOVA_DESCRIPTIONS } from '../core/scoring/nova.js';
@@ -507,8 +508,8 @@ const RISK_EXPLANATION: Record<AdditiveAssessment['risk'], string> = {
   high: 'EFSA calcula si la exposición real de la población supera la ingesta diaria admisible (IDA). Aquí la supera incluso en consumo medio: penaliza de forma gradual, sin congelar la nota.',
   moderate:
     'EFSA calcula si la exposición real de la población supera la ingesta diaria admisible (IDA). Aquí la supera en el consumo alto de algunos grupos: penaliza de forma gradual, sin congelar la nota.',
-  low: 'EFSA ha evaluado la exposición y el margen es holgado. La penalización es mínima.',
-  none: 'EFSA ha evaluado la exposición y ningún grupo supera la ingesta diaria admisible. No penaliza.',
+  low: 'EFSA ha evaluado la exposición y el margen es holgado.',
+  none: 'EFSA ha evaluado la exposición y ningún grupo supera la ingesta diaria admisible.',
   unknown:
     'EFSA aún no ha publicado su reevaluación de sobreexposición para este aditivo. Se aplica la penalización mínima y se dice que no se sabe, en vez de suponerlo seguro.',
 };
@@ -630,7 +631,12 @@ export function additiveSheet(a: AdditiveAssessment): SafeHtml {
     ${a.noDoseReason && !a.bans.length
       ? html`<p class="add-groups">${NO_DOSE_LABELS[a.noDoseReason] ?? ''}.</p>`
       : raw('')}
-    <div class="add-what"><strong>Qué mide esto.</strong> ${RISK_EXPLANATION[a.risk]}</div>
+    <div class="add-what">
+      <strong>De dónde sale la nota.</strong> ${describePenaltyReason(a)}.
+      ${a.risk !== 'unknown'
+        ? html`<span class="add-expo">Sobre la exposición: ${RISK_EXPLANATION[a.risk]}</span>`
+        : raw('')}
+    </div>
     ${grupos
       ? html`<p class="add-groups">
           <strong>Supera la ingesta diaria admisible en:</strong> ${grupos}.

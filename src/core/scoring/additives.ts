@@ -331,8 +331,8 @@ export function assessAdditives(
 
 export const POPULATION_GROUP_LABELS: Record<string, string> = {
   'en:infants': 'lactantes',
-  'en:toddlers': 'ninos pequenos',
-  'en:children': 'ninos',
+  'en:toddlers': 'niños pequeños',
+  'en:children': 'niños',
   'en:adolescents': 'adolescentes',
   'en:adults': 'adultos',
   'en:elderly': 'personas mayores',

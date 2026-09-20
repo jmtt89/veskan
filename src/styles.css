@@ -2654,3 +2654,11 @@ button.link,
   font-size: 1.1rem;
   opacity: 0.35;
 }
+
+/* Coletilla de exposicion dentro de «De donde sale la nota». Va en otro tono
+   porque es una segunda mirada, no el motivo de la penalizacion. */
+.add-expo {
+  display: block;
+  margin-top: 4px;
+  color: var(--ink-2);
+}
