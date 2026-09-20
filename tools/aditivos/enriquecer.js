@@ -285,6 +285,61 @@ print(`retiradas (no penalizan)   : ${nRet}`);
 if (sinItem.length) print(`   SIN ITEM en la coleccion: ${sinItem.join(', ')}`);
 compartidos.forEach(x => print(`   revisar: ${x}`));
 
+// -------------------------------------- 8. detector: retiradas de colorantes
+
+/*
+ * `cfr81` NO es una fuente de verdad, es una ALARMA.
+ *
+ * La decision sobre cada aditivo vive en `prohibiciones.json`, escrita
+ * leyendo la norma. Lo que la § 81.10 del CFR aporta es detectar la
+ * SIGUIENTE: si un dia la FDA retira otro colorante de alimentos, aparece
+ * aqui y avisa de que falta recogerlo, en vez de descubrirse por casualidad
+ * como paso con el amaranto.
+ *
+ * Solo mira los parrafos cuyo alcance incluye ALIMENTOS. Los `D&C` y
+ * `Ext. D&C` son farmacos y cosmetica: un colorante de barra de labios no
+ * tiene por que penalizar una galleta.
+ *
+ * `aplica_a` vacio en el mapeo significa COMPROBADO que no tiene numero E
+ * -se busco su CAS entre nuestros items y no esta-, no que falte revisarlo.
+ * Por eso esos no se avisan.
+ */
+if (db.cfr81.countDocuments() === 0) {
+  print('\ncfr81: coleccion vacia, no se comprueban retiradas de colorantes');
+} else {
+  const mapa = {};
+  db.cfr81_manual.find({}).forEach(m => { mapa[m.seccion] = m; });
+  const faltan = [], sinMapear = [];
+  db.cfr81.find({alimentos: true}).forEach(c => {
+    const m = mapa[c.seccion];
+    if (!m) { sinMapear.push(`${c.seccion} ${c.nombre}`); return; }
+    (m.aplica_a || []).forEach(tag => {
+      const d = a.findOne({'enlaces.off.tag': tag});
+      const tiene = d && (d.prohibiciones || []).some(
+        p => p.jurisdiccion === 'Estados Unidos');
+      if (!tiene) faltan.push(`${c.seccion} ${c.nombre} -> ${tag}`);
+    });
+  });
+  const n = db.cfr81.countDocuments({alimentos: true});
+  print(`\nretiradas de colorantes en EE.UU. (21 CFR 81.10): ${n} en alimentos`);
+  if (sinMapear.length) {
+    print('   SIN MAPEAR a un numero E, hay que decidirlo a mano:');
+    sinMapear.forEach(x => print(`      ${x}`));
+  }
+  if (faltan.length) {
+    print('   RETIRADA NO RECOGIDA en prohibiciones.json:');
+    faltan.forEach(x => print(`      ${x}`));
+  }
+  if (!sinMapear.length && !faltan.length) {
+    print('   todas mapeadas y recogidas');
+  }
+  // Los parrafos que retiran LACAS y no el colorante directo: es la trampa
+  // del (u), que retiro las lacas del Red No. 3 en 1990 pero no el colorante
+  // en alimentos, que aguanto hasta 2025.
+  const lacas = db.cfr81.countDocuments({'revisar.0': {$exists: true}});
+  if (lacas) print(`   parrafos con aviso de revision: ${lacas}`);
+}
+
 // ------------------------------------------------------------------- resumen
 
 print('\nresumen:');

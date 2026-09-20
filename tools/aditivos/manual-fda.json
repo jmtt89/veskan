@@ -8,14 +8,20 @@
     "plomo, propelentes-, asi que el trabajo real son dos.",
     "",
     "Se mantiene el criterio acordado: prohibido en cualquier jurisdiccion",
-    "penaliza en todos los paises. Una prohibicion no se decreta sin expediente."
+    "penaliza en todos los paises. Una prohibicion no se decreta sin expediente.",
+    "",
+    "COLORANTES: la parte 189 no los cubre. Ver `cfr81.py`. El mapeo de cada",
+    "parrafo de la § 81.10 a su numero E va aqui porque el CFR no usa numeros E,",
+    "y se decidio por CAS -no por parecido de nombres-: se busco el CAS de cada",
+    "colorante entre los items de Wikidata que ya tenemos."
   ],
-
   "equivalencias": [
     {
       "seccion": "21 CFR 189.135",
       "nombre_fda": "Cyclamate and its derivatives",
-      "aplica_a": ["en:e952"],
+      "aplica_a": [
+        "en:e952"
+      ],
       "prohibido_desde": 1969,
       "por_que": [
         "El ciclamato es un edulcorante AUTORIZADO en la Union Europea y",
@@ -37,10 +43,11 @@
       ]
     }
   ],
-
   "revocaciones_recientes": [
     {
-      "aplica_a": ["en:e127"],
+      "aplica_a": [
+        "en:e127"
+      ],
       "nombre_fda": "FD&C Red No. 3 (erythrosine)",
       "prohibido": true,
       "fecha": "2025-01-15",
@@ -64,13 +71,21 @@
       "fuente": "https://www.federalregister.gov/documents/2025/01/16/2025-00830/"
     }
   ],
-
   "sin_equivalencia": [
-    "Calamus and its derivatives", "Cinnamyl anthranilate",
-    "Cobaltous salts and its derivatives", "Diethylpyrocarbonate (DEPC)",
-    "Dulcin", "Monochloroacetic acid", "Nordihydroguaiaretic acid (NDGA)",
-    "P-4000", "Safrole", "Thiourea", "Chlorofluorocarbon propellants",
-    "Flectol H", "Lead solders", "Mercaptoimidazoline",
+    "Calamus and its derivatives",
+    "Cinnamyl anthranilate",
+    "Cobaltous salts and its derivatives",
+    "Diethylpyrocarbonate (DEPC)",
+    "Dulcin",
+    "Monochloroacetic acid",
+    "Nordihydroguaiaretic acid (NDGA)",
+    "P-4000",
+    "Safrole",
+    "Thiourea",
+    "Chlorofluorocarbon propellants",
+    "Flectol H",
+    "Lead solders",
+    "Mercaptoimidazoline",
     "4,4'-Methylenebis (2-chloroanaline)",
     "Hydrogenated 4,4'-isopropylidene-diphenolphosphite",
     "Tin-coated lead foil capsules for wine bottles"
@@ -79,5 +94,70 @@
     "No son aditivos alimentarios con numero E: son disolventes, materiales de",
     "envase, propelentes y sustancias que la UE nunca autorizo. No hay nada que",
     "mapear, y dejarlas listadas evita volver a investigarlas."
-  ]
+  ],
+  "colorantes_cfr81": {
+    "_nota": [
+      "`aplica_a` vacio significa COMPROBADO que no tiene numero E, no que falte",
+      "mirarlo. Red No. 1, Red No. 4 y Violet No. 1 son colorantes que la Union",
+      "Europea nunca autorizo: ninguno de sus CAS aparece entre nuestros items.",
+      "",
+      "Sirve para que `enriquecer.js` avise si aparece una retirada de colorante",
+      "en alimentos que no este recogida en `prohibiciones.json`. Esa es la razon",
+      "de ser de esta tabla: detectar la proxima, no repetir las conocidas."
+    ],
+    "asignaciones": [
+      {
+        "seccion": "21 CFR 81.10(c)",
+        "nombre_fda": "FD&C Red No. 1",
+        "cas": "3564-09-8",
+        "otro_nombre": "Ponceau 3R",
+        "aplica_a": [],
+        "por_que": "sin numero E: ningun item lleva ese CAS"
+      },
+      {
+        "seccion": "21 CFR 81.10(d)",
+        "nombre_fda": "FD&C Red No. 4",
+        "cas": "4548-53-2",
+        "otro_nombre": "Ponceau SX",
+        "aplica_a": [],
+        "por_que": "sin numero E: ningun item lleva ese CAS"
+      },
+      {
+        "seccion": "21 CFR 81.10(e)",
+        "nombre_fda": "FD&C Violet No. 1",
+        "cas": "1694-09-3",
+        "otro_nombre": "Benzyl Violet 4B",
+        "aplica_a": [],
+        "por_que": "sin numero E: ningun item lleva ese CAS"
+      },
+      {
+        "seccion": "21 CFR 81.10(f)",
+        "nombre_fda": "FD&C Red No. 2",
+        "cas": "915-67-3",
+        "otro_nombre": "Amaranto",
+        "aplica_a": [
+          "en:e123"
+        ],
+        "por_que": "PubChem CID 13506 reune E123, Amaranth y FD&C Red 2, y trae la marca (DELISTED)"
+      },
+      {
+        "seccion": "21 CFR 81.10(g)",
+        "nombre_fda": "Carbon black",
+        "cas": "1333-86-4",
+        "otro_nombre": "Negro de humo",
+        "aplica_a": [
+          "en:e152"
+        ],
+        "por_que": "Q764245 lleva ese CAS y el tag en:e152. OJO: la norma nombra el proceso de canal o impingement, no la sustancia sin mas"
+      },
+      {
+        "seccion": "21 CFR 81.10(u)",
+        "nombre_fda": "FD&C Red No. 3",
+        "cas": "16423-68-0",
+        "otro_nombre": "Eritrosina",
+        "aplica_a": [],
+        "por_que": "en 1990 solo se retiraron las LACAS para alimentos y el colorante para cosmetica; el uso alimentario directo cayo en 2025 y esa es la entrada que vale (90 FR 4628)"
+      }
+    ]
+  }
 }

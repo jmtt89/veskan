@@ -317,6 +317,31 @@
       "alcance": "total",
       "motivo": "precaución por exposición al aluminio",
       "nota": "Igual que el E559: la UE lo borró por sustituibilidad, no por toxicología."
+    },
+    {
+      "tag": "en:e152",
+      "numero_e": "152",
+      "nombre": "Negro de humo",
+      "jurisdiccion": "Estados Unidos",
+      "referencia": "21 CFR 81.10(g); 41 FR 56396",
+      "fecha": "1976-12-28",
+      "verbo": "terminates the provisional listing of carbon black (prepared by the impingement or channel process) for use in food, drugs, and cosmetics",
+      "alcance": "total",
+      "motivo": "no consta en el CFR",
+      "nota": [
+        "LA NORMA NOMBRA UN PROCESO, no la sustancia sin mas: «prepared by the",
+        "impingement or channel process». La preocupacion historica eran los",
+        "hidrocarburos aromaticos policiclicos del negro de canal.",
+        "",
+        "Se recoge igual porque hoy NINGUN negro de humo tiene uso alimentario",
+        "permitido en Estados Unidos. La ficha vigente de estado regulatorio de la",
+        "FDA lo da como «Delisted, formerly exempt from certification», prohibido",
+        "en alimentos, con ultima fecha de uso permitido el 28-12-1976.",
+        "",
+        "En la Union Europea esta AUSENTE de la lista positiva, que es el caso",
+        "ambiguo: no es lo mismo que una retirada. No confundir con el E153,",
+        "carbon vegetal, que si esta autorizado en la UE y son 2.455 productos."
+      ]
     }
   ],
   "retiradas": [

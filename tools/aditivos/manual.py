@@ -24,18 +24,28 @@ import sys
 FICHEROS = {
     'manual-iarc.json': ('asignaciones', 'iarc_manual'),
     'manual-fda.json': ('revocaciones_recientes', 'fda_manual'),
+    # El mapeo parrafo de la § 81.10 -> numero E. Va anidado un nivel mas
+    # porque comparte fichero con las revocaciones.
+    'manual-fda.json#colorantes': (('colorantes_cfr81', 'asignaciones'),
+                                   'cfr81_manual'),
 }
 
 
 def main(directorio, salida_dir):
-    for fichero, (campo, coleccion) in FICHEROS.items():
+    for clave, (campo, coleccion) in FICHEROS.items():
+        fichero = clave.split('#')[0]
         ruta = f'{directorio}/{fichero}'
         try:
             d = json.load(open(ruta, encoding='utf8'))
         except FileNotFoundError:
             print(f'{fichero:<22} no esta, se salta')
             continue
-        filas = d.get(campo) or []
+        if isinstance(campo, tuple):
+            for k in campo:
+                d = (d or {}).get(k) or {}
+            filas = d if isinstance(d, list) else []
+        else:
+            filas = d.get(campo) or []
         salida = f'{salida_dir}/{coleccion}.jsonl'
         with open(salida, 'w', encoding='utf8') as f:
             for i, x in enumerate(filas):
