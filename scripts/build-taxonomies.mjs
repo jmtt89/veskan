@@ -32,10 +32,21 @@ import { DatabaseSync } from 'node:sqlite';
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const SOURCE = 'https://static.openfoodfacts.org/data/taxonomies/additives.json';
 const OUT = resolve(ROOT, 'public/data/additives.json');
-// Nuestra base de peligro, generada por `tools/aditivos/publicar.mjs`. Si no
-// esta, la taxonomia se genera igual: el motor tiene que seguir funcionando
-// con solo lo de Open Food Facts.
-const PELIGRO = resolve(ROOT, 'data/aditivos/aditivos.sqlite3');
+/*
+ * Nuestra base de peligro, generada por `tools/aditivos/publicar.mjs`.
+ *
+ * VA VERSIONADA, y no en `data/` como el resto de artefactos, por una razon
+ * que costo un despliegue: `data/` esta en .gitignore, el workflow ejecuta
+ * `build:taxonomies` antes de compilar, y alli el fichero no existia. La
+ * primera version se limitaba a saltarse la fusion con un aviso... y eso
+ * convirtio un fallo duro en uno SILENCIOSO. Compilaba, desplegaba, y la
+ * aplicacion salia a produccion sin ninguna prohibicion: el amaranto volvia a
+ * mostrarse como «Sin riesgo».
+ *
+ * Son 96 kB, deterministas y regenerables, igual que el `additives.json` que
+ * ya estaba versionado al lado.
+ */
+const PELIGRO = resolve(ROOT, 'tools/aditivos/aditivos.sqlite3');
 // Identificacion ante Open Food Facts. No es autenticacion ni lleva datos
 // personales: solo el nombre del proyecto y una URL publica de contacto.
 const UA = 'Veskan/0.1 (+https://github.com/jmtt89/veskan)';
@@ -167,8 +178,15 @@ if (peligro.aditivos) {
   console.log(`  con prohibicion:                    ${peligro.prohibidos}`);
   console.log(`  con nivel de gravedad:              ${peligro.nivel}`);
   console.log(`  con motivo de no tener dosis:       ${peligro.motivo}`);
+} else if (process.env.VESKAN_SIN_PELIGRO === '1') {
+  console.log('\nSin base de peligro, a peticion expresa (VESKAN_SIN_PELIGRO=1).');
 } else {
-  console.log('\nSin base de peligro (data/aditivos/aditivos.sqlite3 no esta).');
+  // Falla a proposito. Sin esto la taxonomia se genera vacia de peligro, el
+  // build pasa, y el error solo se descubre mirando la aplicacion desplegada.
+  throw new Error(
+    `No esta la base de peligro: ${PELIGRO}\n` +
+    'Se genera con `npm run aditivos:publicar -- <dir-jsonl>` y va versionada.\n' +
+    'Para construir sin ella a proposito: VESKAN_SIN_PELIGRO=1');
 }
 
 console.log('\nCobertura de evaluacion EFSA:');
