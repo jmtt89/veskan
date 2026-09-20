@@ -1,0 +1,83 @@
+{
+  "_comentario": [
+    "Estados Unidos: mapeo a numeros E y revocaciones que el CFR aun no refleja.",
+    "",
+    "La FDA no usa numeros E. Su parte 189 nombra las sustancias en texto, asi",
+    "que el puente hay que hacerlo a mano. Son diecinueve y la mayoria ni",
+    "siquiera son aditivos alimentarios europeos -disolventes, soldaduras de",
+    "plomo, propelentes-, asi que el trabajo real son dos.",
+    "",
+    "Se mantiene el criterio acordado: prohibido en cualquier jurisdiccion",
+    "penaliza en todos los paises. Una prohibicion no se decreta sin expediente."
+  ],
+
+  "equivalencias": [
+    {
+      "seccion": "21 CFR 189.135",
+      "nombre_fda": "Cyclamate and its derivatives",
+      "aplica_a": ["en:e952"],
+      "prohibido_desde": 1969,
+      "por_que": [
+        "El ciclamato es un edulcorante AUTORIZADO en la Union Europea y",
+        "prohibido en Estados Unidos desde 1969, tras un estudio que asocio la",
+        "mezcla ciclamato-sacarina con tumores de vejiga en ratas.",
+        "",
+        "Es el caso que justifica tener mas de una jurisdiccion: con solo la",
+        "fuente europea era invisible. 306 apariciones en el catalogo."
+      ]
+    },
+    {
+      "seccion": "21 CFR 189.130",
+      "nombre_fda": "Coumarin",
+      "aplica_a": [],
+      "por_que": [
+        "Prohibida como aditivo en Estados Unidos. No tiene numero E porque en",
+        "la UE tampoco es un aditivo autorizado: aparece como componente natural",
+        "de aromas, no como aditivo. Sin equivalencia que mapear."
+      ]
+    }
+  ],
+
+  "revocaciones_recientes": [
+    {
+      "aplica_a": ["en:e127"],
+      "nombre_fda": "FD&C Red No. 3 (erythrosine)",
+      "prohibido": true,
+      "fecha": "2025-01-15",
+      "cumplimiento": "2027-01-15",
+      "referencia": "90 FR 4634, 16 enero 2025",
+      "base_legal": "clausula Delaney de la Federal Food, Drug and Cosmetic Act",
+      "por_que": [
+        "La FDA revoco la autorizacion del FD&C Red No. 3 en alimentos tras una",
+        "peticion que presento evidencia de cancer de tiroides en ratas macho.",
+        "La clausula Delaney obliga a prohibir cualquier aditivo que cause",
+        "cancer en humanos o animales, sin margen de apreciacion sobre la dosis.",
+        "",
+        "NO SE PUEDE EXTRAER DEL CFR todavia: el texto sigue listando el",
+        "§ 74.303 con una nota que dice «Link to an amendment published at",
+        "90 FR 4634, Jan. 16, 2025», porque el plazo de cumplimiento llega hasta",
+        "enero de 2027. Por eso va aqui y no en el extractor.",
+        "",
+        "Son 5.904 apariciones en el catalogo, la mas frecuente de todas las",
+        "prohibidas en alguna jurisdiccion despues del E171."
+      ],
+      "fuente": "https://www.federalregister.gov/documents/2025/01/16/2025-00830/"
+    }
+  ],
+
+  "sin_equivalencia": [
+    "Calamus and its derivatives", "Cinnamyl anthranilate",
+    "Cobaltous salts and its derivatives", "Diethylpyrocarbonate (DEPC)",
+    "Dulcin", "Monochloroacetic acid", "Nordihydroguaiaretic acid (NDGA)",
+    "P-4000", "Safrole", "Thiourea", "Chlorofluorocarbon propellants",
+    "Flectol H", "Lead solders", "Mercaptoimidazoline",
+    "4,4'-Methylenebis (2-chloroanaline)",
+    "Hydrogenated 4,4'-isopropylidene-diphenolphosphite",
+    "Tin-coated lead foil capsules for wine bottles"
+  ],
+  "_nota_sin_equivalencia": [
+    "No son aditivos alimentarios con numero E: son disolventes, materiales de",
+    "envase, propelentes y sustancias que la UE nunca autorizo. No hay nada que",
+    "mapear, y dejarlas listadas evita volver a investigarlas."
+  ]
+}

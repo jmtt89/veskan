@@ -31,6 +31,20 @@ glutamato monosodico, los guanilatos y los inosinatos salian «no autorizados».
 
 Comprobado: E621, E627, E631, E282 y E132 estan en la parte C; E171 no esta en
 ninguna de las dos.
+
+RETIRADAS ENTRE VERSIONES. Comparar la parte B con la E encuentra lo que sigue
+listado pero ya no se autoriza. No encuentra lo que desaparecio del reglamento
+ENTERO, y eso tambien es una retirada activa: el sorbato calcico (E203) y los
+galatos de octilo y dodecilo (E311, E312) estaban autorizados en 2012 y no
+figuran en 2026.
+
+Cellar publica 67 versiones consolidadas, asi que la comparacion es directa.
+
+PERO DESAPARECER NO SIEMPRE ES RETIRARSE. Los glucosidos de esteviol (E960)
+tambien desaparecen entre 2012 y 2026, y no se prohibieron: se desglosaron en
+E960a, E960b, E960c y E960d. Son 5.389 apariciones en el catalogo y marcarlas
+como prohibidas habria sido un error grave. Por eso, antes de dar una
+desaparicion por retirada, se comprueba que el numero no siga vivo con sufijos.
 """
 import json
 import re
@@ -102,7 +116,43 @@ def rangos(fragmento, universo):
     return fuera
 
 
-def main(salida, cache=None):
+def retiradas(plano_viejo, plano_nuevo):
+    """
+    Numeros E autorizados en una version anterior y ausentes de la actual.
+
+    Comparar la parte B con la E encuentra lo que sigue listado y ya no se
+    autoriza; no encuentra lo que desaparecio del reglamento ENTERO, y eso
+    tambien es retirada activa: el sorbato calcico (E203) y los galatos de
+    octilo y dodecilo (E311, E312) estaban autorizados en 2012 y no figuran en
+    2026.
+
+    PERO DESAPARECER NO SIEMPRE ES RETIRARSE. Los glucosidos de esteviol (E960)
+    tambien desaparecen, y no se prohibieron: se desglosaron en E960a, E960b,
+    E960c y E960d. Son 5.389 apariciones en el catalogo, y marcarlas como
+    prohibidas habria sido un error grave. Por eso se descarta lo que sigue
+    vivo con sufijos.
+    """
+    pv, pn = partes(plano_viejo), partes(plano_nuevo)
+    lv, ln = numeros(pv['PARTE B']), numeros(pn['PARTE B'])
+    av = (numeros(pv['PARTE C']) | numeros(pv['PARTE E'])
+          | rangos(pv['PARTE C'], lv) | rangos(pv['PARTE E'], lv))
+    an = (numeros(pn['PARTE C']) | numeros(pn['PARTE E'])
+          | rangos(pn['PARTE C'], ln) | rangos(pn['PARTE E'], ln))
+    fuera = set()
+    for e in av - an:
+        m = re.fullmatch(r'(\d{3,4})([a-z]*)', e)
+        # Los numeros E van de 100 a ~1599. `E6436` salia del texto de 2012 y
+        # no es un aditivo: es un numero cualquiera precedido de una E.
+        if not m or not 100 <= int(m.group(1)) <= 1599:
+            continue
+        if any(o != e and o.startswith(e) for o in an):
+            continue                       # renumeracion, no retirada
+        fuera.add(e)
+    return fuera
+
+
+def main(salida, cache=None, cache_viejo=None,
+         celex_viejo='02008R1333-20120524'):
     if cache:
         try:
             html = open(cache, encoding='utf8').read()
@@ -126,10 +176,19 @@ def main(salida, cache=None):
             p['PARTE B']):
         nombres.setdefault(m.group(1).lower(), m.group(2).strip(' .▼'))
 
+    # Retiradas comprobadas contra una version anterior.
+    salieron = set()
+    if cache_viejo:
+        try:
+            viejo = texto_plano(open(cache_viejo, encoding='utf8').read())
+            salieron = retiradas(viejo, plano)
+        except (FileNotFoundError, SystemExit):
+            pass
+
     ahora = datetime.now(timezone.utc).isoformat()
     filas = []
-    for e in sorted(listados | autorizados):
-        esta = e in autorizados
+    for e in sorted(listados | autorizados | salieron):
+        esta = e in autorizados and e not in salieron
         filas.append({
             '_id': e,
             'numero_e': e,
@@ -140,6 +199,10 @@ def main(salida, cache=None):
             'via': ('parte-e' if e in autorizados_e else
                     'grupo-parte-c' if e in en_grupos else None),
             'listado_parte_b': e in listados,
+            # Estaba autorizado en una version anterior y ya no. Es una
+            # retirada activa aunque ya ni figure en el reglamento.
+            'retirado': e in salieron,
+            'referencia_anterior': celex_viejo if e in salieron else None,
             'fuente': {'celex': CELEX, 'url': URL, 'consultado': ahora},
         })
 
@@ -154,6 +217,10 @@ def main(salida, cache=None):
     print(f'   en grupos de la parte C     : {len(en_grupos)}')
     print(f'   AUTORIZADOS (union C u E)   : {len(autorizados)}')
     print(f'   listados pero NO autorizados: {len(no)}')
+    if salieron:
+        print(f'   RETIRADOS desde {celex_viejo}: {len(salieron)}')
+        for e in sorted(salieron):
+            print(f'      E{e}')
     for d in no:
         print(f"      E{d['numero_e']:<8} {d['nombre_reglamento'] or ''}")
     print(f'\nescrito {salida}')
@@ -163,4 +230,4 @@ def main(salida, cache=None):
 
 
 if __name__ == '__main__':
-    main(*sys.argv[1:3])
+    main(*sys.argv[1:5])

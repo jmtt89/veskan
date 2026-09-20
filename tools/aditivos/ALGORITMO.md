@@ -203,6 +203,51 @@ misma.
 
 **Ningún peldaño vale 0.** El 0 es no llevar aditivos.
 
+### Por que se retiro: no todas las retiradas dicen lo mismo
+
+«Prohibido en alguna jurisdiccion» se adopto como senal fuerte porque una
+prohibicion no se decreta sin expediente. Al comprobarlo aditivo por aditivo
+resulta que **de las seis retiradas europeas, solo una es por evidencia de
+dano**:
+
+| Aditivo | Motivo | Penaliza como |
+|---|---|---|
+| E171 dioxido de titanio | **riesgo identificado** | prohibido |
+| E203 sorbato calcico | seguridad no confirmada | sin-datos |
+| E311 galato de octilo | seguridad no confirmada | sin-datos |
+| E312 galato de dodecilo | seguridad no confirmada | sin-datos |
+| E483 tartrato de estearilo | seguridad no confirmada | sin-datos |
+| E912 esteres montanicos | seguridad no confirmada | sin-datos |
+
+El motivo se extrae de los considerandos del reglamento modificativo, que
+Cellar sirve igual que el consolidado. Que reglamento hizo cada cambio va a
+mano en `retiradas-ue.json` porque el consolidado no lo dice; la
+interpretacion, que es la parte delicada, es automatica y comprobable.
+
+**Revisados uno a uno contra la literatura, ninguno de los cinco tiene estudios
+que lo incrimine.** Cuatro son vacios de informacion: el tartrato de estearilo
+no tenia NINGUN dato -ni toxicidad a corto plazo, ni subcronica, ni
+genotoxicidad- y los de JECFA de 1965 se consideraron inadecuados. El galato de
+octilo es el mas tranquilizador: EFSA no hallo concern for genotoxicity ni
+aumento de tumores, y un estudio independiente de 2023 en *Mutagenesis* lo
+confirmo con cinco ensayos en linfocitos humanos. El unico con una sombra es el
+sorbato calcico, y prestada: hay datos positivos de genotoxicidad en el sorbato
+SODICO, un pariente cercano, y por eso EFSA pidio ensayos del calcico.
+
+TRES INTENTOS hicieron falta para clasificar los motivos, y los tres fallos
+eran el mismo: **leer palabras de peligro como si fueran hallazgos**.
+
+1. `genotox` a secas cazaba «lack of genotoxicity DATA».
+2. Filtrar la palabra siguiente seguia cazando «data on ... genotoxicity ...
+   were limited», una enumeracion de estudios que faltan.
+3. Filtrar por contexto a ciegas tumbaba tambien al E171, que si tiene
+   veredicto explicito.
+
+La solucion son dos niveles: las frases que **afirman un veredicto** -«no
+longer be considered safe», «concern for genotoxicity could not be ruled out»-
+cuentan siempre; las palabras sueltas, solo cuando el contexto no habla de
+disponibilidad de datos.
+
 ### La prohibición no se ajusta por región
 
 **Decidido:** prohibido en cualquier jurisdiccion penaliza igual en todos los
@@ -216,14 +261,43 @@ herramienta informa de lo que se consume, no de lo que es legal consumir.
 Medido: afecta a **9.598 apariciones (0,70%)** y a **113 de 4.769 productos
 mexicanos con aditivos (2,4%)**.
 
-CONSECUENCIA QUE HAY QUE ASUMIR: el principio dice «prohibido en alguna
-jurisdiccion», pero hoy **solo miramos una**. La unica fuente regulatoria es
-europea, asi que en la practica se aplica el criterio de la UE. El efecto es
-asimetrico: el bromato potasico (E924b) esta prohibido en la UE y permitido en
-Estados Unidos y lo detectamos, pero un aditivo permitido en la UE y prohibido
-en otra parte se nos escaparia. Para que el principio sea el enunciado hace
-falta al menos una segunda jurisdiccion -la FDA publica sus retiradas y no se
-ha investigado-.
+### Segunda jurisdiccion: Estados Unidos
+
+Con una sola fuente el principio se convertia de hecho en «lo que diga
+Bruselas». Se anadio el eCFR -API publica y abierta- y la parte 189 del titulo
+21, literalmente «Substances Prohibited from Use in Human Food».
+
+Encontro justo los casos que faltaban, **legales en Europa y prohibidos en
+Estados Unidos**:
+
+    E952 ciclamato    prohibido desde 1969        306 apariciones
+    E127 eritrosina   revocado el 15-01-2025    5.904 apariciones
+
+La eritrosina se revoco por la clausula Delaney, tras evidencia de cancer de
+tiroides en ratas macho. NO se puede extraer del CFR todavia: el texto sigue
+listando el § 74.303 con una nota que apunta a la enmienda, porque el plazo de
+cumplimiento llega a enero de 2027. Va en `manual-fda.json`.
+
+CUIDADO: el endpoint del eCFR EXIGE compresion. Sin `Accept-Encoding` responde
+406 con «This endpoint requires response compression», facil de confundir con
+un problema de permisos.
+
+### Retiradas por comparacion de versiones
+
+Comparar la parte B con la E encuentra lo que sigue listado y ya no se
+autoriza. No encuentra lo que **desaparecio del reglamento entero**, y eso
+tambien es retirada activa. Cellar publica 67 versiones consolidadas del
+1333/2008, asi que la comparacion es directa y encontro cinco mas: E203, E311,
+E312, E483 y E912.
+
+DOS FALSOS POSITIVOS que habria que haber creido:
+
+- **E960 glucosidos de esteviol** desaparece entre 2012 y 2026 y NO se
+  prohibio: se desgloso en E960a, E960b, E960c y E960d. Son **5.389
+  apariciones** y marcarlas como prohibidas habria sido el peor error posible.
+  Se detecta comprobando si el numero sigue vivo con sufijos.
+- **E6436** ni siquiera es un numero E: un numero cualquiera precedido de una
+  E en el texto de 2012. Se filtra acotando el rango valido (100-1599).
 
 ---
 

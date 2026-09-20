@@ -1,0 +1,56 @@
+{
+  "_comentario": [
+    "Que reglamento retiro cada aditivo de la lista de la Union.",
+    "",
+    "Esto va a mano porque el texto consolidado NO dice quien hizo cada cambio:",
+    "lleva marcas como ▼M98 pero no el CELEX del reglamento modificativo, y para",
+    "un aditivo BORRADO no queda ni la marca. Son pocos y el mapeo es estable.",
+    "",
+    "La parte delicada -por que se retiro- si es automatica: `motivos.py`",
+    "descarga cada reglamento y clasifica sus considerandos. Asi la",
+    "interpretacion es comprobable contra la fuente en vez de ser una opinion",
+    "escrita aqui."
+  ],
+  "retiradas": [
+    {
+      "numero_e": "171",
+      "nombre": "Dioxido de titanio",
+      "celex": "32022R0063",
+      "nota": "Sigue en la Parte B porque se usa en medicamentos; no autorizado en alimentos."
+    },
+    {
+      "numero_e": "203",
+      "nombre": "Sorbato calcico",
+      "celex": "32018R0098"
+    },
+    {
+      "numero_e": "311",
+      "nombre": "Galato de octilo",
+      "celex": "32018R1481"
+    },
+    {
+      "numero_e": "312",
+      "nombre": "Galato de dodecilo",
+      "celex": "32018R1481"
+    },
+    {
+      "numero_e": "483",
+      "nombre": "Tartrato de estearilo",
+      "celex": "32023R2379"
+    },
+    {
+      "numero_e": "912",
+      "nombre": "Esteres de acido montanico",
+      "celex": "32014R0957",
+      "nota": [
+        "Esteres de acido montanico, cera para tratar la superficie de citricos.",
+        "La fecha se acoto por busqueda binaria sobre las versiones consolidadas:",
+        "presente el 2014-09-15, ausente el 2014-11-06. De ahi salio el reglamento.",
+        "EFSA 2013 (EFSA Journal 3236) concluyo que «no podia evaluarse»: faltaban",
+        "datos de toxicocinetica y de toxicidad reproductiva, los pedidos en los",
+        "anos noventa nunca se entregaron y la llamada publica de 2012 quedo sin",
+        "respuesta."
+      ]
+    }
+  ]
+}
