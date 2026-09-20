@@ -1,0 +1,72 @@
+{
+  "_comentario": [
+    "Dictamenes DE GRUPO de EFSA que no se cruzan solos, asignados a mano.",
+    "",
+    "EFSA evalua a veces una familia entera en un dictamen. Esa sustancia no es",
+    "un compuesto: no tiene CAS, asi que el cruce por CAS no la ve. Algunas",
+    "declaran su alcance en el nombre -«(E 338-341, E 343, E 450-452)»- y esas",
+    "se resuelven solas; el resto hay que mapearlas.",
+    "",
+    "Son POCAS -trece sustancias de grupo con datos en toda OpenFoodTox- y por",
+    "eso van a mano. Construir un emparejador difuso para trece casos tendria",
+    "mas riesgo de asignar mal que valor: ya vimos que `De-oiled lecithin` se",
+    "colaba como lecitina E322 y `Cross-linked sodium CMC` como E466.",
+    "",
+    "REGLA: un dato de grupo NO sustituye al especifico. Si un aditivo tiene",
+    "evaluacion propia por CAS, esa manda; la del grupo solo rellena el hueco.",
+    "El acido fosforico (E338) tiene IDA 2,25 propia y 40 por el grupo de los",
+    "fosfatos: vale 2,25."
+  ],
+
+  "grupos": [
+    {
+      "sustancia_oft": "Sulfur dioxide and sulfites group",
+      "aplica_a": ["en:e220", "en:e221", "en:e222", "en:e223",
+                   "en:e224", "en:e225", "en:e226", "en:e227", "en:e228"],
+      "por_que": [
+        "No cruza por dos motivos a la vez: grafia -OpenFoodTox escribe `sulfur`",
+        "y Open Food Facts `sulphur`- y grupo frente a miembros. Son 9.654",
+        "apariciones en el catalogo, de los aditivos mas frecuentes en vino y",
+        "fruta seca, y el grupo tiene una IDA de 0,7 mg/kg, de las mas bajas."
+      ]
+    },
+    {
+      "sustancia_oft": "Mono- and diacetyl tartaric acid esters of mono- and diglycerides of fatty acids",
+      "aplica_a": ["en:e472e"],
+      "por_que": ["DATEM. El nombre de Open Food Facts es mucho mas corto."]
+    },
+    {
+      "sustancia_oft": "Propane-1,2-diol esters of fatty acids",
+      "aplica_a": ["en:e477"],
+      "por_que": ["Open Food Facts lo llama por el nombre comun, propilenglicol."]
+    },
+    {
+      "sustancia_oft": "Glycerol esters of wood rosin (GEWR) from Pinus palustris and Pinus elliottii",
+      "aplica_a": ["en:e445"],
+      "por_que": ["El nombre de OpenFoodTox incluye las especies de pino."]
+    }
+  ],
+
+  "descartados": [
+    {
+      "sustancia_oft": "Cobalt(II) derivatives",
+      "por_que": "Contaminante, no aditivo alimentario autorizado."
+    },
+    {
+      "sustancia_oft": "Fenpropidin (sum of fenpropidin and its salts)",
+      "por_que": "Plaguicida. OpenFoodTox cubre todo el ambito de EFSA, no solo aditivos."
+    },
+    {
+      "sustancia_oft": "Imazamox (sum of imazamox and its salts)",
+      "por_que": "Plaguicida."
+    },
+    {
+      "sustancia_oft": "Methyl 2-furoate, furfural, furfuryl alcohol and furfuryl acetate",
+      "por_que": "Aromas, categoria distinta de los aditivos."
+    },
+    {
+      "sustancia_oft": "PA9T oligomer mixture",
+      "por_que": "Material en contacto con alimentos, no aditivo."
+    }
+  ]
+}

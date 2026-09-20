@@ -1,0 +1,49 @@
+{
+  "_comentario": [
+    "Clasificaciones de IARC asignadas A MANO, porque no se pueden cruzar solas.",
+    "",
+    "IARC clasifica a veces una EXPOSICION y no una sustancia, y esas entradas no",
+    "llevan numero CAS: son 173, de las cuales 80 estan en grupo 1 o 2A. Al",
+    "revisarlas, 49 son ajenas a un alimento -tabaco, amianto, radiacion, virus,",
+    "oficios- y de las 31 restantes casi todas son categorias dieteticas -carne",
+    "procesada, carne roja, pescado salado, bebidas muy calientes- que hablan del",
+    "alimento, no de un aditivo.",
+    "",
+    "Para aditivos queda UNA sola entrada aplicable, la de nitratos y nitritos.",
+    "",
+    "DESCARTADA: «Benzidine, dyes metabolized to» (grupo 1). Son colorantes",
+    "industriales de textil y cuero que se metabolizan a bencidina. Los azoicos",
+    "alimentarios -tartracina E102, amarillo crepusculo E110, rojo allura E129-",
+    "no derivan de bencidina, asi que esa entrada NO les aplica. Se comprobo",
+    "antes de descartarla porque la tentacion de aplicarla a todos los azoicos",
+    "era justo el tipo de atajo que este proyecto evita."
+  ],
+
+  "asignaciones": [
+    {
+      "aplica_a": ["en:e249", "en:e250", "en:e251", "en:e252"],
+      "grupo": "2A",
+      "entrada_iarc": "Nitrate or nitrite (ingested) under conditions that result in endogenous nitrosation",
+      "volumen": "94",
+      "anio": 2010,
+      "condicional": true,
+      "condicion": "solo cuando se dan condiciones de nitrosacion endogena",
+      "por_que": [
+        "El nitrito reacciona en el estomago con aminas y forma nitrosaminas, que",
+        "si son carcinogenos conocidos. Por eso la clasificacion es de la",
+        "EXPOSICION y no del compuesto, y por eso no tiene CAS que cruzar.",
+        "",
+        "Importa senalarlo porque el efecto critico que trae OpenFoodTox para el",
+        "nitrito es «aumento de metahemoglobina», que es el que fija su IDA. Una",
+        "ficha construida solo sobre ese dato seria tecnicamente correcta y",
+        "engañosa en lo que mas importa.",
+        "",
+        "LA CONDICION NO SE PUEDE OMITIR al mostrarlo: IARC no dice que el nitrito",
+        "sea cancerigeno sin mas, sino bajo esas condiciones. Presentarlo como",
+        "incondicional seria exagerar la fuente."
+      ],
+      "revisado_por": "revision manual de las 80 entradas de grupo 1 y 2A sin CAS",
+      "fuente": "https://www.ncbi.nlm.nih.gov/books/NBK326535/"
+    }
+  ]
+}
