@@ -239,10 +239,27 @@ db.prohibiciones.find({}).forEach(p => {
    * sustancia. Sin guardar el tag, la prohibicion del potasico se leeria como
    * si cubriera al calcico.
    */
-  const otros = (d.enlaces.off || []).map(x => x.tag).filter(x => x !== p.tag);
+  /*
+   * QUE TAGS CUBRE, leido de la norma y no deducido por descarte.
+   *
+   * Deducirlo fallaba, y al reves: la version anterior marcaba `no_cubre` como
+   * «todos los demas tags del item», con lo que la prohibicion del fosfato de
+   * aluminio decia cubrir `en:e541` y NO `en:e541i`, cuando el reglamento
+   * nombra exactamente `INS 541 i`.
+   *
+   * Resulta que `en:e541` y `en:e541i` son la MISMA sustancia con dos
+   * convenciones: la UE no usa romanos y llama «E 541 Fosfato acido de sodio y
+   * aluminio» a lo que Codex llama `541 i`. El alcalino -`541 ii`- la UE ni lo
+   * autoriza. Eso no se deduce de la estructura: hay que leer las dos normas.
+   */
+  const cubre = p.cubre && p.cubre.length ? p.cubre : [p.tag];
+  const otros = (d.enlaces.off || []).map(x => x.tag)
+                                     .filter(x => cubre.indexOf(x) < 0);
   const entrada = {
     tag: p.tag,
-    // Otros numeros E del mismo item que esta prohibicion NO cubre.
+    cubre,
+    // Numeros E del mismo item que esta prohibicion NO cubre: son otra
+    // sustancia aunque compartan documento de Wikidata.
     no_cubre: otros.length ? otros : null,
     tipo: p.tipo,
     jurisdiccion: p.jurisdiccion,
@@ -253,9 +270,6 @@ db.prohibiciones.find({}).forEach(p => {
     verbo: p.verbo,
     alcance: p.alcance || null,
     alcance_detalle: p.alcance_detalle || null,
-    // `fisica` marca el konjac: prohibido por asfixia, no por toxicidad. No
-    // debe entrar en la escala de peligro.
-    naturaleza: p.naturaleza || 'toxicologica',
     motivo: p.motivo || null,
     base_legal: p.base_legal || null,
     matiz: p.matiz || null,

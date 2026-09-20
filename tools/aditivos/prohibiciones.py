@@ -41,8 +41,8 @@ def main(entrada, salida):
         extra = ''
         if x.get('alcance') == 'parcial':
             extra = '  [PARCIAL]'
-        if x.get('naturaleza') == 'fisica':
-            extra += '  [no toxicologico]'
+        if x.get('no_cubre'):
+            extra += f"  [no cubre {', '.join(x['no_cubre'])}]"
         otras = len(x.get('tambien') or [])
         if otras:
             extra += f'  (+{otras} jurisdicciones)'
