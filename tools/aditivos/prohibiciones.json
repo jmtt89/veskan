@@ -209,16 +209,85 @@
           "verbo": "shall not manufacture, sell, deliver, distribute, hold, or offer for sale",
           "alcance": "total",
           "nota": "Aún no en vigor."
+        },
+        {
+          "jurisdiccion": "Canadá",
+          "referencia": "List of Permitted Bleaching, Maturing or Dough Conditioning Agents",
+          "fecha": null,
+          "verbo": "was once a food additive in Canada, but it is no longer permitted in foods for sale in Canada",
+          "alcance": "total",
+          "nota": "Health Canada, GCDWQ Bromate (2018). OJO: es retirada de lista positiva, no norma prohibitiva. Se anota por completitud, no aporta a la clasificacion."
         }
       ],
-      "nota": "La UE NUNCA lo prohibió: está ausente de la lista positiva. El «ban europeo de 1990» que repiten las fuentes secundarias fue británico. Lo que hay en la UE es el dictamen del SCF de 19-10-1990 declarándolo «not acceptable».",
+      "nota": [
+        "NO ES UN NUMERO E. El Reglamento 1333/2008 consolidado tiene CERO",
+        "apariciones de «bromate» y su serie salta de E 920 a E 927b: la Union",
+        "Europea nunca asigno numero E a ningun bromato. «E924a» es el INS del",
+        "Codex con una E pegada delante. Y ni eso sigue vigente: el Codex revoco",
+        "las especificaciones en su 35ª sesion (2012) y el listado INS actual salta",
+        "de 923 a 925. Las instantaneas lo acotan: presente el 14-03-2012, ausente",
+        "el 26-02-2013.",
+        "",
+        "LA UE NUNCA LO PROHIBIO: esta ausente de la lista positiva, que es el caso",
+        "ambiguo. El «ban europeo de 1990» que repiten casi todas las fuentes",
+        "secundarias fue britanico (SI 1990/399). Lo unico europeo es el dictamen",
+        "del SCF de 19-10-1990 declarandolo «not acceptable», que no es una norma.",
+        "",
+        "IARC LO VA A REEVALUAR. Su informe de prioridades 2025-2029 lo lista como",
+        "entrada 194 «Bromate compounds» con recomendacion literal «an IARC",
+        "Monographs re-evaluation of bromate compounds is warranted. Recommendation:",
+        "High priority», en la categoria «nueva evidencia mecanicista». Es una",
+        "SUBIDA desde prioridad media. La base son estudios de genotoxicidad en",
+        "celulas humanas primarias (2007-2021). El 2B puede moverse, y hacia arriba.",
+        "",
+        "ESTADOS UNIDOS lo permite mas ampliamente de lo que parece: el 21 CFR",
+        "136.110(c)(14)(i) autoriza añadirlo DIRECTAMENTE al pan, no solo via harina",
+        "bromatada, y nombra tanto el potasico como el calcico. En el mismo titulo,",
+        "el 165.110 limita el bromato a 10 ppb en agua embotellada mientras el",
+        "137.205 permite 75.000 ppb sobre harina.",
+        "",
+        "NO EXISTE NI UN ESTUDIO EPIDEMIOLOGICO. Verificado por tres vias: IARC («No",
+        "studies of cancer in humans were available»), EPA IRIS («None.») y Europe",
+        "PMC, que devuelve un unico resultado y es un articulo sobre la VIABILIDAD",
+        "de hacer el estudio. Tampoco hay ningun bioensayo cronico desde 1998.",
+        "",
+        "El «limite de 20 ppb en producto terminado» que cita toda la literatura NO",
+        "EXISTE como norma: es un acuerdo informal con la American Bakers",
+        "Association. No hay limite de residuo en horneados en el titulo 21."
+      ],
       "cubre": [
         "en:e924",
         "en:e924a"
       ],
       "no_cubre": [
         "en:e924b"
-      ]
+      ],
+      "hermano": {
+        "tag": "en:e924b",
+        "nombre": "Bromato de calcio",
+        "cas": "10102-75-7",
+        "wikidata": "Q416861",
+        "por_que_no_entra": [
+          "El bromato de calcio NO esta prohibido explicitamente en ninguna parte.",
+          "En Japon, la UE, Canada e India esta ausente de una lista positiva -el",
+          "caso ambiguo- y las normas con verbo prohibitivo nombran solo el",
+          "potasico: la Lei 10.273/2001 dice literalmente «bromato de potassio».",
+          "",
+          "Marcarlo prohibido romperia la distincion en el unico caso donde una ley",
+          "lo omite por escrito.",
+          "",
+          "El PELIGRO si se comparte, y con fundamento: la EPA no evaluo una sal",
+          "sino el ANION (CAS 15541-45-4), convirtiendo las dosis del potasico por",
+          "0,766 y mezclando bioensayos de la sal sodica y la potasica. Pero ninguna",
+          "de nuestras fuentes -CLP, IARC, OpenFoodTox- tiene entrada para el",
+          "calcico ni para el anion, asi que darle nivel seria una lectura cruzada",
+          "nuestra, no un dato. Con CERO productos en el catalogo no compensa.",
+          "",
+          "Si algun dia aparece un producto con en:e924b, la lectura cruzada es",
+          "defendible: el anion es el mismo y el calcico aporta ~13% mas bromato por",
+          "unidad de masa (86,5% frente a 76,6%)."
+        ]
+      }
     },
     {
       "tag": "en:e216",

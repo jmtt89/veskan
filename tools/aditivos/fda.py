@@ -6,11 +6,28 @@ alguna jurisdiccion penaliza en todas», porque una prohibicion no se decreta
 sin expediente detras. Pero con una sola fuente regulatoria esa regla se
 convierte de hecho en «lo que diga Bruselas», y el efecto es asimetrico:
 
-    E924b bromato potasico   prohibido en la UE, permitido en EE.UU.  -> se veia
-    E952  ciclamato          permitido en la UE, prohibido en EE.UU.  -> NO se veia
+    E952 ciclamato   permitido en la UE, prohibido en EE.UU.  -> NO se veia
 
 El ciclamato lleva prohibido en Estados Unidos desde 1969 y es un edulcorante
-legal en Europa. Sin esta fuente era invisible.
+legal en Europa. Sin esta fuente era invisible. Son 1.638 productos.
+
+Y NI CON DOS BASTA. La primera version de este docstring ponia como ejemplo el
+bromato potasico, diciendo que la UE lo prohibia y asi «se veia». Era falso
+tres veces, y las tres importan:
+
+  - Lo llamaba E924b, que es el bromato de CALCIO. El potasico es el E924a.
+  - La UE NUNCA lo prohibio. Esta ausente de la lista positiva, que es el caso
+    ambiguo. El «ban europeo de 1990» que repiten casi todas las fuentes
+    secundarias fue britanico (SI 1990/399); lo unico europeo es un dictamen
+    del SCF de 19-10-1990 declarandolo «not acceptable», que no es una norma.
+  - Y por tanto NO se veia: con la UE y Estados Unidos era invisible, porque
+    Estados Unidos tampoco lo prohibe -lo permite por estandares de identidad,
+    21 CFR 137.155 y 137.205-.
+
+Aparecio cuando entro Brasil, cuya Lei 10.273/2001 si dice «e proibido o
+emprego de bromato de potassio». Son 433 productos que con dos jurisdicciones
+habrian quedado sin marcar. El ejemplo elegido para defender que una fuente no
+basta demostraba, sin querer, que dos tampoco.
 
 DE DONDE. El eCFR -el Codigo de Regulaciones Federales electronico- tiene API
 publica y abierta. La parte 189 del titulo 21 es literalmente «Substances
