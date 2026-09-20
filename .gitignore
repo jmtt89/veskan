@@ -13,3 +13,7 @@ dev-dist/
 
 # Repositorio separado (licencia ODbL). Se publica aparte.
 data-repo/
+
+# Cache de los extractores de aditivos.
+__pycache__/
+*.pyc

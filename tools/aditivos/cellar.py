@@ -50,7 +50,7 @@ import json
 import re
 import sys
 import urllib.request
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 
 CELEX = '02008R1333-20260218'
 URL = f'http://publications.europa.eu/resource/celex/{CELEX}'
@@ -96,6 +96,51 @@ def partes(plano):
 
 def numeros(fragmento):
     return {m.group(1).lower() for m in NUMERO.finditer(fragmento)}
+
+
+# Notas al pie de la Parte B que CADUCAN una entrada. Se veia asi:
+#
+#     E 556 Silicato de calcio y aluminio ( 2 )
+#     E 558 Bentonita ( 3 )
+#     ...
+#     ( 2 ) Autorizado hasta el 31 de enero de 2014.
+#     ( 3 ) Autorizado hasta el 31 de mayo de 2013.
+#
+# Leer la tabla sin mirar la nota daba por autorizados tres aditivos que la
+# Union borro hace mas de diez anos. Lo confirma el registro de la FSA
+# britanica, que marca «Revoked» el E 556 y el E 559, y el considerando 5 del
+# Reglamento 497/2013, que dice que el 380/2012 los «deletes».
+#
+# CUIDADO: no todas las notas caducan. La ( 4 ) dice «Periodo de aplicacion:
+# DESDE el 6 de febrero de 2013», que es lo contrario -una entrada que empieza-
+# y tratarla igual desautorizaria el E 261 sin motivo.
+NOTA_MARCA = re.compile(r'\bE\s?(\d{3,4}[a-z]*)\s+[^E]{2,60}?\(\s*(\d)\s*\)')
+NOTA_FIN = re.compile(r'\(\s*(\d)\s*\)\s*Autorizado hasta el '
+                      r'(\d{1,2}) de (\w+) de (\d{4})')
+MESES = {m: i + 1 for i, m in enumerate(
+    'enero febrero marzo abril mayo junio julio agosto septiembre octubre '
+    'noviembre diciembre'.split())}
+
+
+def caducados(parte_b, hoy=None):
+    """
+    Numeros E de la Parte B cuya nota al pie dice que caducaron.
+
+    Devuelve `{numero_e: fecha}`. Solo las notas de FIN; las de inicio se
+    ignoran a proposito.
+    """
+    hoy = hoy or date.today()
+    fin = {}
+    for m in NOTA_FIN.finditer(parte_b):
+        mes = MESES.get(m.group(3).lower())
+        if mes:
+            fin[m.group(1)] = date(int(m.group(4)), mes, int(m.group(2)))
+    fuera = {}
+    for m in NOTA_MARCA.finditer(parte_b):
+        f = fin.get(m.group(2))
+        if f and f < hoy:
+            fuera[m.group(1).lower()] = f.isoformat()
+    return fuera
 
 
 def rangos(fragmento, universo):
@@ -165,6 +210,8 @@ def main(salida, cache=None, cache_viejo=None,
     plano = texto_plano(html)
     p = partes(plano)
     listados = numeros(p['PARTE B'])
+    # Entradas cuya nota al pie dice que su periodo de autorizacion termino.
+    vencidos = caducados(p['PARTE B'])
     en_grupos = numeros(p['PARTE C']) | rangos(p['PARTE C'], listados)
     autorizados_e = numeros(p['PARTE E']) | rangos(p['PARTE E'], listados)
     autorizados = en_grupos | autorizados_e
@@ -188,7 +235,9 @@ def main(salida, cache=None, cache_viejo=None,
     ahora = datetime.now(timezone.utc).isoformat()
     filas = []
     for e in sorted(listados | autorizados | salieron):
-        esta = e in autorizados and e not in salieron
+        # Una nota de caducidad vencida manda sobre la pertenencia a la
+        # lista: el aditivo aparece en la tabla, pero su autorizacion expiro.
+        esta = e in autorizados and e not in salieron and e not in vencidos
         filas.append({
             '_id': e,
             'numero_e': e,
@@ -201,7 +250,8 @@ def main(salida, cache=None, cache_viejo=None,
             'listado_parte_b': e in listados,
             # Estaba autorizado en una version anterior y ya no. Es una
             # retirada activa aunque ya ni figure en el reglamento.
-            'retirado': e in salieron,
+            'retirado': e in salieron or e in vencidos,
+            'caducado_el': vencidos.get(e),
             'referencia_anterior': celex_viejo if e in salieron else None,
             'fuente': {'celex': CELEX, 'url': URL, 'consultado': ahora},
         })

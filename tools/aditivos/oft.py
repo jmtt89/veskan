@@ -19,6 +19,34 @@ LA ESTRUCTURA. Los valores de referencia apuntan a la sustancia en UN salto
 -`Parent UUID` de ToxRefValues es el `Document UUID` de SUB-, pero el efecto
 critico es un UUID que apunta a un registro de estudio en otra hoja.
 
+LA SEGUNDA RAMA, que la primera version no leia y costo 143 sustancias. Una
+fila de ToxRefValues puede colgar su dato de DOS sitios distintos:
+
+    HumanHealthHazardCharacteristics.AcceptableDailyIntake.*     <- se leia
+    HumanHealthHazardCharacteristics.OtherReferenceValues.*      <- no
+
+Descartar la fila cuando la primera rama viene vacia parecia inocuo -«no hay
+IDA, no hay dato»- y no lo era: de 203 sustancias enlazadas que se quedaron sin
+cargar, 143 SI tenian filas, solo que en la otra rama. Se vio porque los seis
+parabenos aparecian enlazados y sin ningun dato detras.
+
+Lo que hay ahi no es ruido. Son otros valores de referencia -TDI, TWI, UL- y,
+sobre todo, el MOTIVO de que no exista IDA, escrito por EFSA:
+
+    E216 propilparabeno   «Incomplete dataset»
+    E554 silicato Na-Al   «Incomplete dataset» (x4)
+    E559 caolin           «critical study not identified»
+                          «Not deemed necessary; no exposure expected»
+
+Eso es justo lo que hace falta para distinguir «no se pudo evaluar» de «no hizo
+falta evaluarlo», que son cosas opuestas y ambas se veian como un hueco.
+
+NO SE MEZCLAN CON LA IDA, y no es un detalle de estilo. Una TWI es semanal y
+una IDA diaria; una TTC Cramer no es una dosis segura medida sino un umbral
+generico por estructura quimica. Meterlas en el campo `ida` corromperia
+`posicion_en_nivel`, que ordena por potencia dentro de un nivel comparando
+IDAs. Van en `otros_valores`, con su tipo y su unidad.
+
 TRES TRAMPAS DEL FORMATO, las tres comprobadas:
 
   - El xlsx OMITE las celdas vacias, asi que emparejar cabecera y fila por
@@ -41,6 +69,8 @@ from datetime import datetime, timezone
 from extraer import Libro
 
 IDA = 'HumanHealthHazardCharacteristics.AcceptableDailyIntake.'
+# La OTRA rama, la que esta version no leia. Ver «LA SEGUNDA RAMA» arriba.
+OTROS = 'HumanHealthHazardCharacteristics.OtherReferenceValues.'
 EFECTO = re.compile(r'\s*Toxicity:\s*([^;]+?)\s*(?:;|$)')
 DESC = re.compile(r'Effect desc\.?:\s*(.+)')
 # Etiquetas que existen pero no dicen nada util. Mas de la mitad de los casos.
@@ -79,6 +109,54 @@ def numero(v):
         return None
 
 
+# Descriptores que NO son una dosis sino la razon de que no la haya. Conviene
+# separarlos porque dicen cosas opuestas: «incomplete dataset» es una laguna,
+# «not deemed necessary» es una evaluacion que concluyo que no hacia falta.
+SIN_DOSIS = {
+    'incomplete dataset': 'datos-incompletos',
+    'critical study not identified': 'sin-estudio-critico',
+    'not deemed necessary': 'no-necesario',
+    'margin of safety': 'margen-de-seguridad',
+}
+
+
+def clasificar_descriptor(d):
+    bajo = (d or '').strip().lower()
+    for clave, etiqueta in SIN_DOSIS.items():
+        if bajo.startswith(clave):
+            return etiqueta
+    return None
+
+
+def otro_valor(r):
+    """
+    La rama `OtherReferenceValues` de una fila sin IDA.
+
+    Devuelve None si tampoco hay nada aqui: hay filas que solo llevan los tres
+    campos de estructura -`Document UUID`, `Definition`, `Parent UUID`- y esas
+    no aportan, se descartan igual que antes.
+    """
+    tipo = (r.get(OTROS + 'ReferenceValueDescriptor.Other')
+            or r.get(OTROS + 'ReferenceValueDescriptor'))
+    valor = numero(r.get(OTROS + 'RefValue.lowerValue'))
+    just = r.get(OTROS + 'JustificationAndComments')
+    ce = r.get(OTROS + 'CriticalEndpoint')
+    if not any((tipo, valor is not None, just, ce)):
+        return None
+    return {
+        'tipo': tipo,
+        # Cuando el descriptor explica por que NO hay dosis, se anota aparte:
+        # es la respuesta a «no tiene IDA, pero por que».
+        'sin_dosis_motivo': clasificar_descriptor(tipo),
+        'valor': valor,
+        'unidad': r.get(OTROS + 'RefValue.Unit') or r.get(OTROS + 'RefValue.Unit.Other'),
+        'poblacion': r.get(OTROS + 'Population'),
+        'organismo': r.get(OTROS + 'AssessmentBody'),
+        'justificacion': just,
+        'critico_uuid': ce,
+    }
+
+
 def main(ruta_oft, salida, version='OpenFoodTox 3.0 (Zenodo 19388272)'):
     lib = Libro(ruta_oft)
 
@@ -97,7 +175,7 @@ def main(ruta_oft, salida, version='OpenFoodTox 3.0 (Zenodo 19388272)'):
         }
 
     # Valores de referencia. `Parent UUID` es la sustancia, en un salto.
-    valores, criticos = {}, {}
+    valores, criticos, otros = {}, {}, {}
     for r in lib.filas('FLEX_SUM.ToxRefValues'):
         s = r.get('Parent UUID')
         if s not in sustancias:
@@ -119,6 +197,13 @@ def main(ruta_oft, salida, version='OpenFoodTox 3.0 (Zenodo 19388272)'):
             'organismo': r.get(IDA + 'AssessmentBody'),
         }
         if not any(v[k] for k in ('ida', 'sin_ida')):
+            # La fila no trae IDA, pero puede traer otro valor de referencia o
+            # el motivo de que no lo haya. Antes se descartaba aqui mismo.
+            o = otro_valor(r)
+            if o:
+                otros.setdefault(s, []).append(o)
+                if o['critico_uuid']:
+                    criticos[o['critico_uuid']] = s
             continue
         # Entre varios, manda la IDA mas baja: es la mas protectora.
         previo = valores.get(s)
@@ -161,17 +246,22 @@ def main(ruta_oft, salida, version='OpenFoodTox 3.0 (Zenodo 19388272)'):
     ahora = datetime.now(timezone.utc).isoformat()
     n_util = 0
     with open(salida, 'w', encoding='utf8') as f:
-        for u in sorted(set(valores) | set(estudios.values() and estudios)):
-            if u not in valores and u not in estudios:
-                continue
+        for u in sorted(set(valores) | set(estudios) | set(otros)):
             e = estudios.get(u)
             if e and e['util']:
                 n_util += 1
+            o = otros.get(u)
             f.write(json.dumps({
                 '_id': u,
                 **sustancias[u],
                 'valor': valores.get(u),
                 'critico': e,
+                # Otros valores de referencia y, si no hay ninguno, el motivo
+                # que da EFSA. Nunca se mezclan con `valor`: unidades distintas.
+                'otros_valores': o,
+                'sin_dosis_motivo': next(
+                    (x['sin_dosis_motivo'] for x in (o or [])
+                     if x['sin_dosis_motivo']), None),
                 'fuente': {'version': version, 'consultado': ahora},
             }, ensure_ascii=False) + '\n')
 
@@ -184,6 +274,16 @@ def main(ruta_oft, salida, version='OpenFoodTox 3.0 (Zenodo 19388272)'):
         if v['ida'] is None and v['sin_ida_motivo']:
             motivos[v['sin_ida_motivo']] = motivos.get(v['sin_ida_motivo'], 0) + 1
     for m, n in sorted(motivos.items(), key=lambda x: -x[1]):
+        print(f'      {n:>4}  {m}')
+    solo_otros = set(otros) - set(valores)
+    print(f'sustancias SIN IDA pero con otra rama : {len(solo_otros)}')
+    motivos_otros = {}
+    for u in otros:
+        for x in otros[u]:
+            if x['sin_dosis_motivo']:
+                motivos_otros[x['sin_dosis_motivo']] = \
+                    motivos_otros.get(x['sin_dosis_motivo'], 0) + 1
+    for m, n in sorted(motivos_otros.items(), key=lambda x: -x[1]):
         print(f'      {n:>4}  {m}')
     print(f'con efecto critico resuelto        : {len(estudios)}')
     print(f'   con etiqueta UTIL               : {n_util}')

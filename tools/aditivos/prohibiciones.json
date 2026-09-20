@@ -1,0 +1,267 @@
+{
+  "_comentario": [
+    "Estado legal por jurisdiccion, con el TEXTO de la norma.",
+    "",
+    "LA DISTINCION QUE MANDA es PROHIBIR frente a RETIRAR DE LA LISTA, y no es",
+    "una sutileza: son actos distintos con motivos distintos.",
+    "",
+    "    prohibicion  la norma dice que la sustancia no puede usarse",
+    "    retirada     un acto la borro del listado, sin decir eso",
+    "",
+    "Solo la primera penaliza. La segunda obliga a mirar la evidencia aparte,",
+    "porque en seis de nueve casos la razon no es la sustancia: es que nadie",
+    "pago el expediente de reevaluacion o que dejo de venderse.",
+    "",
+    "POR QUE VA A MANO. Cada entrada se decidio LEYENDO el considerando, no",
+    "buscando palabras. Tres intentos de clasificar esto con expresiones",
+    "regulares fallaron, y el ultimo fallo fue el caro: buscar «prohibit» en el",
+    "reglamento del dioxido de titanio da CERO coincidencias, y sin embargo su",
+    "considerando 12 dice «titanium dioxide (E 171) may no longer be used in",
+    "foods». La frase que decide no contiene la palabra que se buscaba.",
+    "",
+    "Leyendo aparecieron ademas tres aditivos que ningun patron habria sacado,",
+    "porque no estaban en la lista de los que se buscaban: E128, E154 y E160f.",
+    "",
+    "El campo `verbo` guarda la frase literal para poder comprobar cada",
+    "veredicto contra la fuente sin releer el reglamento entero."
+  ],
+
+  "prohibiciones": [
+    {
+      "tag": "en:e171", "numero_e": "171", "nombre": "Dióxido de titanio",
+      "jurisdiccion": "Unión Europea", "referencia": "32022R0063", "fecha": "2022-01-14",
+      "verbo": "titanium dioxide (E 171) may no longer be used in foods",
+      "alcance": "total",
+      "motivo": "EFSA 2021 no pudo descartar la genotoxicidad de la fracción nanométrica",
+      "nota": "Sigue en la Parte B porque colorea medicamentos; no autorizado en alimentos."
+    },
+    {
+      "tag": "en:e541", "numero_e": "541", "nombre": "Fosfato ácido de sodio y aluminio",
+      "jurisdiccion": "Mercosur", "referencia": "GMC Res. 28/18 art. 3", "fecha": "2018-11-05",
+      "verbo": "Prohibir el uso en alimentos",
+      "alcance": "parcial",
+      "alcance_detalle": "salvo categorías 7.3.2 y 7.3.3 (repostería con leudante químico)",
+      "motivo": "precaución por exposición acumulada al aluminio; no hay hallazgo de daño",
+      "tambien": [
+        {"jurisdiccion": "China", "referencia": "国家卫生计生委公告 2014年第8号",
+         "fecha": "2014-07-01", "verbo": "撤销 / 禁止", "alcance": "total"}
+      ]
+    },
+    {
+      "tag": "en:e127", "numero_e": "127", "nombre": "Eritrosina",
+      "jurisdiccion": "Estados Unidos", "referencia": "90 FR 4628, 16 enero 2025",
+      "fecha": "2025-01-15", "cumplimiento": "2027-01-15",
+      "verbo": "FDA finds that FD&C Red No. 3 can induce cancer in male rats … we are revoking the listings … as a matter of law",
+      "alcance": "total",
+      "base_legal": "cláusula Delaney, FD&C Act 721(b)(5)(B)(i)",
+      "motivo": "tumores tiroideos en rata macho (Borzelleca 1987) a 4% en dieta",
+      "matiz": [
+        "La propia FDA escribe que esos tumores son «of limited relevance to",
+        "humans», que la eritrosina «is likely not genotoxic», que el riesgo",
+        "humano a las dosis reales es «unlikely» -margen de exposición de 210",
+        "veces- y que no aparecieron ni en ratas hembra ni en ratones, jerbos o",
+        "perros. Prohibe igual porque Delaney no admite matices de dosis."
+      ]
+    },
+    {
+      "tag": "en:e952", "numero_e": "952", "nombre": "Ciclamato",
+      "jurisdiccion": "Estados Unidos", "referencia": "21 CFR 189.135", "fecha": "1969",
+      "verbo": "Substances Prohibited from Use in Human Food (título de la parte 189)",
+      "alcance": "total",
+      "motivo": "tumores de vejiga en rata con mezcla ciclamato/sacarina 10:1",
+      "matiz": [
+        "El Comisionado de la FDA escribió en 1980 (45 FR 61474) que Delaney",
+        "«is not being invoked in this proceeding because the evidence submitted",
+        "does not conclusively establish that cyclamate is a carcinogen», y",
+        "denegó la petición por carga de la prueba. Su propio comité (1984) y la",
+        "NAS (1985) concluyeron que no es carcinógeno. IARC grupo 3. La UE lo",
+        "autoriza con IDA 0-7 mg/kg pc."
+      ]
+    },
+    {
+      "tag": "en:e554", "numero_e": "554", "nombre": "Silicato de sodio y aluminio",
+      "jurisdiccion": "Mercosur", "referencia": "GMC Res. 28/18 art. 1", "fecha": "2018-11-05",
+      "verbo": "Prohibir el uso en alimentos",
+      "alcance": "total",
+      "motivo": "precaución por exposición al aluminio",
+      "tambien": [
+        {"jurisdiccion": "China", "referencia": "国家卫生计生委公告 2014年第8号",
+         "fecha": "2014-07-01", "verbo": "撤销 / 禁止", "alcance": "total"}
+      ],
+      "nota": "EFSA 2020: «the safety … could not be assessed» — laguna, no hallazgo."
+    },
+    {
+      "tag": "en:e425", "numero_e": "425", "nombre": "Goma konjac",
+      "jurisdiccion": "Mercosur", "referencia": "GMC Res. 15/05", "fecha": "2005-06-09",
+      "verbo": "Prohibir",
+      "alcance": "parcial",
+      "alcance_detalle": "solo postres y confituras a base de gelificantes, y minicápsulas",
+      "naturaleza": "fisica",
+      "motivo": "riesgo de ASFIXIA por la forma física, no toxicidad",
+      "nota": [
+        "El unico de la lista cuyo motivo no es toxicologico. Sigue permitido",
+        "con limites en caramelos y pastillas, y la UE lo restringe igual solo",
+        "en minicapsulas. Se marca `naturaleza: fisica` para poder excluirlo de",
+        "la escala de peligro sin perder el dato."
+      ]
+    },
+    {
+      "tag": "en:e924a", "numero_e": "924a", "nombre": "Bromato de potasio",
+      "jurisdiccion": "Brasil", "referencia": "Lei 10.273/2001 art. 1", "fecha": "2001-09-05",
+      "verbo": "É proibido o emprego de bromato de potássio, em qualquer quantidade",
+      "alcance": "total",
+      "motivo": "JECFA 1992: «potassium bromate is a genotoxic carcinogen»; IARC 2B con «sufficient evidence in experimental animals»",
+      "tambien": [
+        {"jurisdiccion": "Reino Unido", "referencia": "SI 1990/399 y SI 1990/395",
+         "fecha": "1990-04-01", "verbo": "Prohibition as a Flour Improver", "alcance": "total"},
+        {"jurisdiccion": "Perú", "referencia": "RD 1228-2002-DIGESA-SA",
+         "fecha": "2002-11-15", "verbo": "Prohíben fabricación, importación o comercialización", "alcance": "total",
+         "nota": "Se cita esta y no la Ley 27932/2003 porque es la que usa la palabra «aditivo»."},
+        {"jurisdiccion": "Colombia", "referencia": "Resolución 1528 de 2002",
+         "fecha": "2002", "verbo": "prohíbe importación, fabricación, comercialización y uso", "alcance": "total"},
+        {"jurisdiccion": "India", "referencia": "notificación FSSAI", "fecha": "2016-06-20",
+         "verbo": "use of potassium bromate as an additive in any food is not allowed", "alcance": "total"},
+        {"jurisdiccion": "China", "referencia": "GB 2760", "fecha": "2005",
+         "verbo": "禁止", "alcance": "total"},
+        {"jurisdiccion": "California (EE.UU.)", "referencia": "AB 418, California Food Safety Act",
+         "fecha": "2027-01-01", "verbo": "shall not manufacture, sell, deliver, distribute, hold, or offer for sale",
+         "alcance": "total", "nota": "Aún no en vigor."}
+      ],
+      "nota": "La UE NUNCA lo prohibió: está ausente de la lista positiva. El «ban europeo de 1990» que repiten las fuentes secundarias fue británico. Lo que hay en la UE es el dictamen del SCF de 19-10-1990 declarándolo «not acceptable»."
+    },
+    {
+      "tag": "en:e216", "numero_e": "216", "nombre": "Propilparabeno",
+      "jurisdiccion": "Mercosur", "referencia": "GMC Res. 34/07 art. 1", "fecha": "2007-12-11",
+      "verbo": "Prohibir el uso en alimentos de los aditivos INS 216 … y INS 217",
+      "alcance": "total",
+      "motivo": "JECFA 67 (2006) lo excluyó de la IDA de grupo por «adverse effects in tissues of reproductive organs in male rats at dietary doses of down to 10 mg/kg bw per day, … with no NOEL yet identified»",
+      "matiz": [
+        "El hallazgo procede de UN solo estudio -Oishi 2002, n=8 por grupo- que",
+        "fracasó dos veces al replicarse en estudios GLP mayores: Gazin 2013",
+        "(agencia francesa del medicamento) y Sivaraman 2018, ambos con NOAEL de",
+        "1.000 mg/kg/día, cien veces por encima. La EMA escribió en 2015 que con",
+        "esos datos «would quite possibly have been included in that group ADI».",
+        "Ninguna agencia alimentaria ha reabierto el expediente."
+      ],
+      "tambien": [
+        {"jurisdiccion": "California (EE.UU.)", "referencia": "AB 418", "fecha": "2027-01-01",
+         "verbo": "shall not manufacture, sell…", "alcance": "total"}
+      ]
+    },
+    {
+      "tag": "en:e123", "numero_e": "123", "nombre": "Amaranto",
+      "jurisdiccion": "Estados Unidos", "referencia": "21 CFR 81.10(f) y 81.30(j)",
+      "fecha": "1976-02-10",
+      "verbo": "use of this color additive in the manufacture of food, drugs, or cosmetics after this date will result in adulteration",
+      "alcance": "total",
+      "motivo": "no consta en el CFR; el expediente está en 41 FR 5823 (1976)",
+      "nota": [
+        "El CFR no da motivo cientifico, solo «to protect the public health».",
+        "Que hoy sigue prohibido consta en tres documentos VIGENTES de la FDA:",
+        "la ficha de estado regulatorio («Delisted … Use: None»), la guia",
+        "CPG 587.200 -que exige al comprador extranjero declarar que conoce su",
+        "«illegality in the United States»- y el propio 21 CFR 81.30(j).",
+        "",
+        "ESTE CASO DESTAPO UN AGUJERO: `fda.py` lee la parte 189 del titulo 21 y",
+        "los colorantes no se retiran ahi, sino en la parte 81. Ver `cfr81.py`."
+      ]
+    },
+    {
+      "tag": "en:e559", "numero_e": "559", "nombre": "Silicato de aluminio (caolín)",
+      "jurisdiccion": "Mercosur", "referencia": "GMC Res. 28/18 art. 1", "fecha": "2018-11-05",
+      "verbo": "Prohibir el uso en alimentos",
+      "alcance": "total",
+      "motivo": "precaución por exposición al aluminio",
+      "nota": "La UE lo borró en 2014, pero NO por toxicología: «since these substances can be replaced by other food additives» (Reg. 380/2012 cdo. 11). La prohibición viene de Mercosur."
+    },
+    {
+      "tag": "en:e128", "numero_e": "128", "nombre": "Rojo 2G",
+      "jurisdiccion": "Unión Europea", "referencia": "32007R0884", "fecha": "2007-07-27",
+      "verbo": "Directive 94/36/EC should be amended to prohibit the use of the colour E 128 Red 2G … suspend with immediate effect the use … and the placing on the market and import",
+      "alcance": "total",
+      "base_legal": "medida de emergencia, art. 53 del Reglamento 178/2002",
+      "motivo": "se metaboliza extensamente a anilina, que es «a carcinogen for which a genotoxic mechanism cannot be excluded»; EFSA retiró la IDA",
+      "nota": "No lo teníamos: figuraba solo como ausente de la lista. Apareció leyendo el considerando 15 del Reg. 1129/2011."
+    },
+    {
+      "tag": "en:e217", "numero_e": "217", "nombre": "Propilparabeno sódico",
+      "jurisdiccion": "Mercosur", "referencia": "GMC Res. 34/07 art. 1", "fecha": "2007-12-11",
+      "verbo": "Prohibir el uso en alimentos de los aditivos INS 216 … y INS 217",
+      "alcance": "total",
+      "motivo": "misma decisión de JECFA 67 que el E216",
+      "nota": "No tiene CAS en Wikidata, así que no hay enlace a OpenFoodTox por esa vía."
+    },
+    {
+      "tag": "en:e556", "numero_e": "556", "nombre": "Silicato de calcio y aluminio",
+      "jurisdiccion": "Mercosur", "referencia": "GMC Res. 28/18 art. 1", "fecha": "2018-11-05",
+      "verbo": "Prohibir el uso en alimentos",
+      "alcance": "total",
+      "motivo": "precaución por exposición al aluminio",
+      "nota": "Igual que el E559: la UE lo borró por sustituibilidad, no por toxicología."
+    }
+  ],
+
+  "retiradas": [
+    {
+      "tag": "en:e203", "numero_e": "203", "nombre": "Sorbato cálcico",
+      "jurisdiccion": "Unión Europea", "referencia": "32018R0098", "fecha": "2018-01-22",
+      "verbo": "due to the absence of appropriate genotoxicity data its inclusion in the list can no longer be justified",
+      "motivo": "faltan-datos",
+      "nota": "«lack of genotoxicity DATA»: habla de lo que falta, no de un hallazgo. Ningún operador se comprometió a aportarlos."
+    },
+    {
+      "tag": "en:e161g", "numero_e": "161g", "nombre": "Cantaxantina",
+      "jurisdiccion": "Unión Europea", "referencia": "32011R1129 cdo. 14", "fecha": "2011-11-11",
+      "verbo": "The Commission was informed that this food colour is no longer used",
+      "motivo": "desuso",
+      "nota": "Ni siquiera es una retirada por evaluación: no se trasladó a la lista de la Unión porque había dejado de usarse. Sigue autorizada para colorear medicamentos."
+    },
+    {
+      "tag": "en:e311", "numero_e": "311", "nombre": "Galato de octilo",
+      "jurisdiccion": "Unión Europea", "referencia": "32018R1481", "fecha": "2018-10-04",
+      "verbo": "no business operator committed to providing the requested toxicological data",
+      "motivo": "faltan-datos"
+    },
+    {
+      "tag": "en:e558", "numero_e": "558", "nombre": "Bentonita",
+      "jurisdiccion": "Unión Europea", "referencia": "32012R0380 cdo. 10", "fecha": "2013-05-31",
+      "verbo": "is not used any more according to information submitted by food manufacturers",
+      "motivo": "desuso",
+      "nota": "Caducó sin renovarse. Nuestra tabla la daba por autorizada: la nota al pie «( 3 ) Autorizado hasta el 31 de mayo de 2013» de la Parte B no se leía."
+    },
+    {
+      "tag": "en:e154", "numero_e": "154", "nombre": "Brown FK",
+      "jurisdiccion": "Unión Europea", "referencia": "32011R1129 cdo. 16", "fecha": "2011-11-11",
+      "verbo": "the Authority could not conclude on the safety of this substance due to the deficiencies in the available toxicity data",
+      "motivo": "faltan-datos",
+      "nota": "No lo teníamos. Es el único de las retiradas nuevas con motivo de seguridad."
+    },
+    {
+      "tag": "en:e312", "numero_e": "312", "nombre": "Galato de dodecilo",
+      "jurisdiccion": "Unión Europea", "referencia": "32018R1481", "fecha": "2018-10-04",
+      "verbo": "no business operator committed to providing the requested toxicological data",
+      "motivo": "faltan-datos"
+    },
+    {
+      "tag": "en:e160f", "numero_e": "160f",
+      "nombre": "Éster etílico del ácido beta-apo-8'-carotenoico",
+      "jurisdiccion": "Unión Europea", "referencia": "32011R1129 cdo. 13", "fecha": "2011-11-11",
+      "verbo": "is not offered anymore by the manufacturer and re-evaluation of this substance by the Authority is no longer supported by the business operators",
+      "motivo": "comercial",
+      "nota": "No lo teníamos."
+    },
+    {
+      "tag": "en:e483", "numero_e": "483", "nombre": "Tartrato de estearilo",
+      "jurisdiccion": "Unión Europea", "referencia": "32023R2379", "fecha": "2023-10-27",
+      "verbo": "no business operator committed to provide the requested toxicological data … its inclusion in the list can no longer be justified",
+      "motivo": "faltan-datos"
+    },
+    {
+      "tag": "en:e912", "numero_e": "912", "nombre": "Ésteres de ácido montánico",
+      "jurisdiccion": "Unión Europea", "referencia": "32014R0957", "fecha": "2014-09-11",
+      "verbo": "due to the absence of recent scientific evidence its inclusion in the list can no longer be justified",
+      "motivo": "faltan-datos",
+      "nota": "EFSA 2013 concluyó que «could not be evaluated»: faltaban datos de toxicocinética y reproducción, y los de genotoxicidad y carcinogenicidad eran «limited»."
+    }
+  ]
+}
