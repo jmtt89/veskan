@@ -303,6 +303,54 @@ function main(dir, salida) {
     ['critico_especie', 'STRING', (d) => texto(d.critico?.especie)],
     ['critico_dosis', 'DOUBLE', (d) => numero(d.critico?.dosis)],
     ['critico_descriptor', 'STRING', (d) => texto(d.critico?.descriptor)],
+    /*
+     * Hallazgos de geno/carcinogenicidad de los expedientes de EFSA.
+     *
+     * `hallazgo` NO ES LA CONCLUSION DEL PANEL. Resume lo que encontraron los
+     * ESTUDIOS, y puede decir lo contrario que el dictamen: el indigo carmin
+     * (E132) sale `positivo` y ese mismo dictamen —doi:10.2903/j.efsa.2023.8103—
+     * confirma su IDA de 5 mg/kg y concluye que «no hay preocupacion de
+     * seguridad». Por eso no alimenta `gravedad` y por eso van al lado la
+     * fecha, el titulo y el DOI: para poder ir a leerlo.
+     *
+     * `estudiado` separa «se estudio» de «nadie lo miro», que es lo que de
+     * verdad aporta esta rama: sin ella, un negativo medido y un hueco llegan
+     * iguales.
+     */
+    ['hallazgo', 'STRING', (d) => texto(d.genotox?.hallazgo)],
+    ['estudiado', 'BOOLEAN', (d) => (d.genotox == null ? null : !!d.genotox.estudiado)],
+    ['genotoxico', 'STRING', (d) => texto(d.genotox?.genotoxic)],
+    ['mutagenico', 'STRING', (d) => texto(d.genotox?.mutagenic)],
+    ['carcinogenico', 'STRING', (d) => texto(d.genotox?.carcinogenic)],
+    ['hallazgo_fecha', 'STRING', (d) => texto(d.genotox?.fecha)],
+    ['hallazgo_dictamen', 'STRING', (d) => texto(d.genotox?.dictamen)],
+    ['hallazgo_doi', 'STRING', (d) => texto(d.genotox?.doi)],
+    ['dictamenes', 'INT32', (d) => numero(d.genotox?.dictamenes)],
+    // Dictamenes ANTERIORES que concluyeron otra cosa. No es un error del
+    // fichero: es que EFSA vuelve sobre el aditivo cuando hay datos nuevos.
+    ['dictamenes_discrepan', 'STRING', (d) => lista(d.genotox?.discrepan)],
+  ]);
+
+  /*
+   * El historial: una fila por dictamen anterior.
+   *
+   * Sin esta tabla la columna `hallazgo` es un numero sin contexto. Con ella
+   * se ve por que el dioxido de titanio cambio: negativo en 2016, 2018 y 2019,
+   * positivo en 2021 —y fue ese ultimo el que llevo a retirarlo de la lista de
+   * la Union—. Aplastar los doce dictamenes en uno daba la conclusion
+   * contraria segun el orden en que se leyeran las filas.
+   */
+  const historial = [];
+  for (const d of D.oft) {
+    for (const h of d.genotox?.historial || []) {
+      historial.push({ uuid: d._id, ...h });
+    }
+  }
+  tabla(salida, 'oft_historial', historial, [
+    ['uuid', 'STRING', (r) => r.uuid],
+    ['fecha', 'STRING', (r) => texto(r.fecha)],
+    ['hallazgo', 'STRING', (r) => texto(r.hallazgo)],
+    ['dictamen', 'STRING', (r) => texto(r.titulo)],
   ]);
 
   tabla(salida, 'iarc', D.iarc, [

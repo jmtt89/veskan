@@ -15,8 +15,9 @@ Cada fichero declara el campo que contiene la lista, porque no comparten forma:
     manual-iarc.json   `asignaciones`   una entrada de IARC -> varios tags
     manual-fda.json    `revocaciones_recientes`  revocacion -> tags
 
-`manual-grupos.json` NO entra aqui: lo consume `enlazar.py`, que es quien
-decide los enlaces, y cargarlo dos veces seria pedir una contradiccion.
+`manual-grupos.json` NO entra aqui: lo consume `enlazar.py` -como quinto
+argumento-, que es quien decide los enlaces, y cargarlo dos veces seria pedir
+una contradiccion.
 """
 import json
 import sys

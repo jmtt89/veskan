@@ -249,10 +249,165 @@ def main(ruta_oft, salida, version='OpenFoodTox 3.0 (Zenodo 19388272)'):
             'util': bool(tox and tox not in VACIAS),
         }
 
+    # Veredicto de genotoxicidad y carcinogenicidad, de la hoja END_SUM.
+    #
+    # POR QUE ESTA HOJA IMPORTA. Las otras dos ramas dan DOSIS: a partir de
+    # cuanto hace dano. Esta da lo contrario, un juicio sobre si hace ese tipo
+    # de dano en absoluto, y con un vocabulario que separa justo lo que se
+    # confunde una y otra vez:
+    #
+    #     Negative        se midio y no hay efecto   -> evidencia de AUSENCIA
+    #     Positive        se midio y lo hay
+    #     Ambiguous       equivoco, no concluyente   -> cola de revision
+    #     No data         nadie lo ha medido         -> HUECO
+    #     Not determined  no se evaluo               -> HUECO
+    #
+    # Sin esto, «negativo medido» y «nadie lo ha mirado» llegan al algoritmo
+    # como la misma cosa -la ausencia de `critico`- y no lo son.
+    #
+    # NO ES LA CONCLUSION DEL PANEL, Y CONFUNDIRLO ES GRAVE. Esto resume los
+    # HALLAZGOS DE LOS ESTUDIOS del expediente, no lo que EFSA dictamino. El
+    # indigo carmin (E132) lo demuestra: su dictamen de 2023 sale aqui con
+    # `Carcinogenic: Positive`, y lo que dice ese dictamen es
+    #
+    #     «the Panel confirmed the ADI of 5 mg/kg bw per day for indigo
+    #      carmine (E 132) disodium salts [...] The Panel concluded that there
+    #      is no safety concern for the use of indigo carmine (E 132)»
+    #                            doi:10.2903/j.efsa.2023.8103, EFSA Journal
+    #
+    # es decir, lo contrario. Ademas va sobre efectos testiculares y
+    # especificaciones, no sobre cancer. Y hay una comprobacion interna que lo
+    # confirma sin salir del fichero: EFSA no asigna IDA a un carcinogeno
+    # genotoxico, y el E132 conserva la suya.
+    #
+    # Por eso el campo se llama `hallazgo` y no `veredicto`, y por eso NO
+    # alimenta el nivel de gravedad. Sirve para lo contrario de lo que parece:
+    # para poder distinguir «se estudio» de «nadie lo miro», y como cola de
+    # revision cuando un expediente reciente trae un positivo.
+    #
+    # `Ambiguous` tampoco es un hallazgo firme: el acido ascorbico sale
+    # `mutagenic: Ambiguous` y llamarlo mutageno seria absurdo.
+    #
+    # UNA SUSTANCIA TIENE VARIOS VEREDICTOS, UNO POR DICTAMEN, Y SE
+    # CONTRADICEN. No es un defecto del fichero: es que EFSA vuelve sobre el
+    # mismo aditivo cuando hay datos nuevos. El dioxido de titanio tiene DOCE
+    # filas aqui:
+    #
+    #     2016  reevaluacion del panel ANS          Genotoxic: Negative
+    #     2019  enmienda de especificaciones        Genotoxic: Negative
+    #     2021  evaluacion actualizada, con datos
+    #           de nanoparticulas y estudio EOGRT   Genotoxic: POSITIVE
+    #
+    # La de 2021 es la que llevo a prohibirlo en la Union. Quedarse con
+    # cualquier otra -o peor, con la que caiga la ultima al recorrer la hoja-
+    # da exactamente la conclusion contraria a la realidad. Por eso cada
+    # hallazgo se FECHA por su dictamen y manda el mas reciente que diga algo.
+    fecha_dossier = {}
+    for r in lib.filas('DOSSIER'):
+        u = r.get('Document UUID')
+        if not u:
+            continue
+        f = r.get('LiteratureReference.DateOfEvaluation')
+        if not f:
+            # Algunos dictamenes solo traen la fecha dentro de un comentario.
+            m = re.search(r'(\d{4}-\d{2}-\d{2})',
+                          str(r.get('DossierSubject.DossierSubmissionRemark') or ''))
+            f = m.group(1) if m else None
+        fecha_dossier[u] = {
+            'fecha': str(f)[:10] if f else None,
+            'titulo': r.get('LiteratureReference.EFSAOutputTitle'),
+            'doi': r.get('LiteratureReference.LinkToPersistentIdentifier'),
+        }
+    dossier_de_doc = {}
+    for r in lib.filas('DOSSIER_DOCS'):
+        if r.get('DOCUMENT TYPE') == 'ENDPOINT_SUMMARY':
+            dossier_de_doc[r.get('DOCUMENT UUID')] = r.get('DOSSIER UUID')
+
+    CAMPOS = ('genotoxic', 'mutagenic', 'carcinogenic')
+    # Para resolver las dos mitades de un mismo dictamen. No es una escala de
+    # gravedad: es cuanto DICE cada respuesta.
+    PESO_VEREDICTO = {'positive': 4, 'ambiguous': 3, 'negative': 2,
+                      'other': 1, 'not applicable': 1,
+                      'no data': 0, 'not determined': 0}
+    dictamenes = {}
+    for r in lib.filas('END_SUM'):
+        u = r.get('Parent UUID')
+        if u not in sustancias:
+            continue
+        ki = r.get('KeyInformation.KeyInformation')
+        if not ki:
+            continue
+        vs = {}
+        for parte in re.split(r'[;\n]', str(ki)):
+            if ':' not in parte:
+                continue
+            k, v = (x.strip() for x in parte.split(':', 1))
+            if k.lower() in CAMPOS and v:
+                vs[k.lower()] = v
+        if not vs:
+            continue
+        # SE AGRUPA POR DICTAMEN, NO POR FILA. Un mismo dictamen aporta dos
+        # filas -una de genotoxicidad y otra de carcinogenicidad- y no son
+        # dictamenes rivales: son dos mitades del mismo. El dioxido de titanio
+        # de 2021 trae `Genotoxic: Positive` en una y `Mutagenic: Negative` en
+        # la otra; tratarlas como dos opiniones distintas, con identica fecha,
+        # deja el desempate al azar y puede perder justo el positivo.
+        du = dossier_de_doc.get(r.get('Document UUID'))
+        d = fecha_dossier.get(du, {})
+        clave = du or r.get('Document UUID')
+        acc = dictamenes.setdefault(u, {}).setdefault(clave, {
+            'fecha': d.get('fecha'),
+            'titulo': d.get('titulo'),
+            'doi': d.get('doi'),
+        })
+        for k, v in vs.items():
+            # Dentro del MISMO dictamen manda lo adverso: si una mitad mide un
+            # efecto y la otra no lo mira, el efecto esta medido.
+            if k not in acc or PESO_VEREDICTO.get(str(v).lower(), 0) > \
+                    PESO_VEREDICTO.get(str(acc[k]).lower(), 0):
+                acc[k] = v
+
+    def clasificar(d):
+        """Que encontraron los estudios de ESTE dictamen. No que concluyo."""
+        vals = {str(d.get(c) or '').lower() for c in CAMPOS}
+        return ('positivo' if 'positive' in vals
+                else 'ambiguo' if 'ambiguous' in vals
+                else 'negativo' if 'negative' in vals
+                else 'sin-dato')
+
+    genotox = {}
+    for u, por_dictamen in dictamenes.items():
+        ds = list(por_dictamen.values())
+        for d in ds:
+            d['hallazgo'] = clasificar(d)
+        # El mas reciente que DIGA algo. Un dictamen sin fecha no puede
+        # desbancar a uno fechado: va al final.
+        dichos = [d for d in ds if d['hallazgo'] != 'sin-dato']
+        orden = sorted(dichos or ds,
+                       key=lambda d: (d['fecha'] or ''), reverse=True)
+        mejor = orden[0]
+        otras_conclusiones = ({d['hallazgo'] for d in dichos}
+                              - {mejor['hallazgo']})
+        genotox[u] = {
+            **{c: mejor.get(c) for c in CAMPOS if mejor.get(c)},
+            'hallazgo': mejor['hallazgo'],
+            'estudiado': mejor['hallazgo'] != 'sin-dato',
+            'fecha': mejor['fecha'],
+            'dictamen': mejor['titulo'],
+            'doi': mejor['doi'],
+            'dictamenes': len(ds),
+            # Dictamenes anteriores que concluyeron otra cosa. No es un error:
+            # es la historia del aditivo, y conviene poder leerla.
+            'discrepan': sorted(otras_conclusiones) or None,
+            'historial': ([{k: d[k] for k in ('fecha', 'hallazgo', 'titulo')}
+                           for d in orden[1:]] if len(orden) > 1 else None),
+        }
+
     ahora = datetime.now(timezone.utc).isoformat()
     n_util = 0
     with open(salida, 'w', encoding='utf8') as f:
-        for u in sorted(set(valores) | set(estudios) | set(otros)):
+        for u in sorted(set(valores) | set(estudios) | set(otros)
+                        | set(genotox)):
             e = estudios.get(u)
             if e and e['util']:
                 n_util += 1
@@ -262,6 +417,8 @@ def main(ruta_oft, salida, version='OpenFoodTox 3.0 (Zenodo 19388272)'):
                 **sustancias[u],
                 'valor': valores.get(u),
                 'critico': e,
+                # Se midio la genotoxicidad/carcinogenicidad y que salio.
+                'genotox': genotox.get(u),
                 # Otros valores de referencia y, si no hay ninguno, el motivo
                 # que da EFSA. Nunca se mezclan con `valor`: unidades distintas.
                 'otros_valores': o,
@@ -291,6 +448,19 @@ def main(ruta_oft, salida, version='OpenFoodTox 3.0 (Zenodo 19388272)'):
                     motivos_otros.get(x['sin_dosis_motivo'], 0) + 1
     for m, n in sorted(motivos_otros.items(), key=lambda x: -x[1]):
         print(f'      {n:>4}  {m}')
+    reparto = {}
+    for d in genotox.values():
+        reparto[d['hallazgo']] = reparto.get(d['hallazgo'], 0) + 1
+    print(f'sustancias con hallazgos de geno/carcinogenicidad : {len(genotox)}')
+    for v in ('positivo', 'ambiguo', 'negativo', 'sin-dato'):
+        if reparto.get(v):
+            print(f'      {reparto[v]:>4}  {v}')
+    varios = sum(1 for d in genotox.values() if d['dictamenes'] > 1)
+    discrepan = sum(1 for d in genotox.values() if d['discrepan'])
+    sin_fecha = sum(1 for d in genotox.values() if not d['fecha'])
+    print(f'      evaluadas en mas de un dictamen : {varios}')
+    print(f'      ...y los dictamenes DISCREPAN   : {discrepan}')
+    print(f'      sin fecha de dictamen           : {sin_fecha}')
     print(f'con efecto critico resuelto        : {len(estudios)}')
     print(f'   con etiqueta UTIL               : {n_util}')
     print(f'   solo «systemic» o «not reported»: {len(estudios) - n_util}')

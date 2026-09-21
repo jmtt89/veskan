@@ -91,26 +91,99 @@ print(`estado legal (Cellar)      : ${nLegal}`);
 
 // ------------------------------------------------------- 2. OpenFoodTox directo
 
+/*
+ * PRECEDENCIA, y por que es explicita. Un aditivo puede llegar a varias
+ * sustancias de EFSA a la vez: la suya por CAS y la de su dictamen de grupo.
+ * El dato ESPECIFICO manda. El acido fosforico (E338) tiene IDA 2,25 propia y
+ * 40 por el grupo de los fosfatos: vale 2,25.
+ *
+ * Esto estaba escrito y se perdio al traer el paso aqui: la version anterior
+ * cogia el PRIMER enlace con registro y cortaba. Funcionaba de rebote, porque
+ * `oft.py` solo cargaba sustancias CON valores y un enlace a una vacia no
+ * encontraba registro y dejaba pasar al siguiente. Al empezar a cargar tambien
+ * las que solo traen veredicto de genotoxicidad, ese corte se disparaba antes
+ * de llegar al dato y se perdian IDAs. El orden del array no es una regla.
+ *
+ * Cada rama elige por separado, porque no tienen por que salir de la misma
+ * sustancia: la IDA puede ser propia y el veredicto de genotoxicidad, del
+ * grupo.
+ */
+const PESO = {'cas': 2, 'numero-e-en-nombre': 1, 'manual-grupo': 1, 'familia': 0};
 let nOft = 0, nRoto = 0;
 a.find({'enlaces.oft.0': {$exists: true}}).forEach(d => {
+  const hits = [];
   for (const l of d.enlaces.oft) {
     const o = db.oft.findOne({_id: l.uuid});
     if (!o) { nRoto++; continue; }
-    const set = {};
-    if (o.valor) {
-      set['oft.valor'] = o.valor;
-      set['oft.valor_de'] = o._id;
-      // `via` es la RUTA del enlace -cas, numero-e-en-nombre, manual-grupo-,
-      // no si el dato es propio o heredado. Eso lo dice `heredado_de`.
-      set['oft.valor_via'] = l.via;
-    }
-    if (o.critico) { set['oft.critico'] = o.critico; set['oft.critico_via'] = l.via; }
-    if (o.otros_valores) set['oft.otros_valores'] = o.otros_valores;
-    if (o.sin_dosis_motivo) set['oft.sin_dosis_motivo'] = o.sin_dosis_motivo;
-    set['oft.nombre'] = o.nombre;
-    if (Object.keys(set).length) { a.updateOne({_id: d._id}, {$set: set}); nOft++; }
-    break;
+    hits.push({o: o, via: l.via, peso: PESO[l.via] || 0});
   }
+  if (!hits.length) return;
+
+  // Primero por especificidad; a igualdad, la IDA mas baja, que es la mas
+  // protectora.
+  const mejor = (filtra, valor) => filtra
+    .sort((x, y) => (y.peso - x.peso) || (valor(x) - valor(y)))[0];
+
+  const set = {};
+  const conValor = mejor(hits.filter(h => h.o.valor && h.o.valor.ida != null),
+                         h => h.o.valor.ida);
+  if (conValor) {
+    set['oft.valor'] = conValor.o.valor;
+    set['oft.valor_de'] = conValor.o._id;
+    // `via` es la RUTA del enlace -cas, numero-e-en-nombre, manual-grupo-,
+    // no si el dato es propio o heredado. Eso lo dice `heredado_de`.
+    set['oft.valor_via'] = conValor.via;
+    set['oft.nombre'] = conValor.o.nombre;
+    // Si ademas hay evaluacion de grupo con otra IDA, se conserva: informa.
+    const otras = hits.filter(h => h.o.valor && h.o.valor.ida != null
+                                && h.o.valor.ida !== conValor.o.valor.ida)
+                      .map(h => ({ida: h.o.valor.ida, via: h.via,
+                                  sustancia: h.o.nombre}));
+    if (otras.length) set['oft.tambien'] = otras;
+  } else {
+    const soloValor = mejor(hits.filter(h => h.o.valor), () => 0);
+    if (soloValor) {
+      set['oft.valor'] = soloValor.o.valor;
+      set['oft.valor_de'] = soloValor.o._id;
+      set['oft.valor_via'] = soloValor.via;
+      set['oft.nombre'] = soloValor.o.nombre;
+    }
+  }
+
+  /*
+   * Se prefiere el estudio que traiga ETIQUETA de toxicidad, pero no se
+   * descarta el que no la trae: sigue llevando especie, dosis y descriptor, y
+   * exigir la etiqueta tiraba 54 de los 101 registros.
+   */
+  const conCrit = hits.filter(h => h.o.critico)
+    .sort((x, y) => (Number(!!y.o.critico.toxicidad) - Number(!!x.o.critico.toxicidad))
+                 || (y.peso - x.peso))[0];
+  if (conCrit) {
+    set['oft.critico'] = conCrit.o.critico;
+    set['oft.critico_via'] = conCrit.via;
+  }
+
+  /*
+   * Los hallazgos de geno/carcinogenicidad de los expedientes de EFSA. NO son
+   * la conclusion del panel -vease la nota en `oft.py`- y por eso no tocan la
+   * gravedad. Se prefiere el que DIGA algo: que una sustancia se haya
+   * estudiado no se hereda a la inversa desde una que no.
+   */
+  const conGen = hits.filter(h => h.o.genotox && h.o.genotox.estudiado)
+                     .sort((x, y) => y.peso - x.peso)[0]
+             || hits.filter(h => h.o.genotox).sort((x, y) => y.peso - x.peso)[0];
+  if (conGen) {
+    set['oft.genotox'] = conGen.o.genotox;
+    set['oft.genotox_via'] = conGen.via;
+  }
+
+  const otros = mejor(hits.filter(h => h.o.otros_valores), () => 0);
+  if (otros) set['oft.otros_valores'] = otros.o.otros_valores;
+  const motivo = hits.find(h => h.o.sin_dosis_motivo);
+  if (motivo) set['oft.sin_dosis_motivo'] = motivo.o.sin_dosis_motivo;
+  if (!set['oft.nombre']) set['oft.nombre'] = hits[0].o.nombre;
+
+  if (Object.keys(set).length) { a.updateOne({_id: d._id}, {$set: set}); nOft++; }
 });
 print(`OpenFoodTox directo        : ${nOft}   (enlaces sin registro: ${nRoto})`);
 

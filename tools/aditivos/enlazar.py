@@ -37,7 +37,16 @@ Los motivos de revision salen de fallos reales ya vistos:
   - `sin-cas`: el item es de un grupo -«mono- y digliceridos»- y los grupos no
     tienen CAS. Sus miembros si.
 
-Salida: JSONL para `mongoimport --mode=merge --upsertFields=_id`.
+Cuando el nombre NO declara el rango, el dictamen de grupo hay que asignarlo a
+mano: eso es `manual-grupos.json`, que se pasa como quinto argumento y produce
+enlaces `via=manual-grupo`.
+
+Uso:
+    python3 enlazar.py <wikidata-items.jsonl> <off-taxonomia.json> \
+                       <oft3.xlsx> <salida.jsonl> [manual-grupos.json]
+
+Salida: JSONL para `mongoimport --mode=merge --upsertFields=_id`, contra la
+coleccion `aditivos`.
 
 Datos: Open Food Facts (ODbL-1.0), EFSA OpenFoodTox (CC-BY-ND), Wikidata (CC0).
 """
@@ -56,10 +65,23 @@ E_SUELTO = re.compile(r'\bE\s?(\d{3,4})(?!\s*[-\u2013\u2014]\s*\d)')
 
 
 def numero_e(valor):
+    """
+    `E452(iv)`, `E452iv` y `E 452 IV` son el mismo aditivo: `452iv`.
+
+    Wikidata escribe el subnumero de las dos formas y esta funcion solo
+    aceptaba la segunda: rechazaba 64 de los 649 valores de P628 del volcado y
+    dejaba 48 items sin NINGUN numero E utilizable. Como el numero E es la via
+    de los dictamenes de grupo de EFSA -los que cubren un rango entero, como
+    «E 338-341, E 343, E 450-452»-, esos 48 quedaban fuera de su propia IDA de
+    grupo. El polifosfato de calcio era uno de ellos.
+
+    `E14XX` se sigue rechazando y debe seguir: es un comodin, no un aditivo.
+    """
     if valor is None:
         return None
     s = str(valor).strip().upper().replace(' ', '')
     s = s[1:] if s.startswith('E') else s
+    s = re.sub(r'\((\w+)\)$', r'\1', s)      # `452(IV)` -> `452IV`
     m = re.match(r'^(\d{3,4}[A-Z]*)$', s)
     return m.group(1).lower() if m else None
 
@@ -87,8 +109,13 @@ def parecidos(a, b):
     return bool(na & nb)
 
 
-def main(ruta_items, ruta_off, ruta_oft, salida):
+def main(ruta_items, ruta_off, ruta_oft, salida, ruta_grupos=None):
     off = json.loads(Path(ruta_off).read_text())
+    # Dictamenes de grupo que no se cruzan solos. Su docstring ya decia que los
+    # consume este script; no era verdad -no los consumia nadie- y los enlaces
+    # `manual-grupo` vivian solo dentro de Mongo, sin paso que los reprodujera.
+    grupos = (json.loads(Path(ruta_grupos).read_text()).get('grupos') or []
+              if ruta_grupos else [])
 
     # Open Food Facts -> Wikidata, y por numero E como respaldo.
     por_qid, por_numero = {}, {}
@@ -130,6 +157,21 @@ def main(ruta_items, ruta_off, ruta_oft, salida):
             cubre.add(m.group(1))
         for e in cubre:
             por_numero_e_oft.setdefault(e, []).append(u)
+
+    # `Sulfur dioxide and sulfites group` -> los uuid de SUB que se llaman asi.
+    uuid_por_nombre_sub = {}
+    for u, nombre in nombre_sub.items():
+        if nombre:
+            uuid_por_nombre_sub.setdefault(nombre.strip(), []).append(u)
+    grupos_por_tag = {}
+    for g in grupos:
+        us = uuid_por_nombre_sub.get((g.get('sustancia_oft') or '').strip())
+        if not us:
+            print(f'   AVISO: grupo sin sustancia en OpenFoodTox: '
+                  f'{g.get("sustancia_oft")!r}')
+            continue
+        for t in (g.get('aplica_a') or []):
+            grupos_por_tag.setdefault(t, []).extend(us)
 
     por_cas = {}
     for r in ref.values():
@@ -189,6 +231,16 @@ def main(ruta_items, ruta_off, ruta_oft, salida):
                                         'param_code': None, 'cas': None,
                                         'via': 'numero-e-en-nombre'})
                     vistos_oft.add(u)
+            # Asignaciones escritas a mano, por TAG de Open Food Facts.
+            for e in enlaces_off:
+                for u in grupos_por_tag.get(e['tag'], []):
+                    if u in vistos_oft:
+                        continue
+                    enlaces_oft.append({'uuid': u, 'nombre': nombre_sub.get(u),
+                                        'param_code': None, 'cas': None,
+                                        'via': 'manual-grupo'})
+                    vistos_oft.add(u)
+
             if len(enlaces_oft) > 1:
                 revisar.append('varias-sustancias-por-cas')
             if not cas:
@@ -216,8 +268,8 @@ def main(ruta_items, ruta_off, ruta_oft, salida):
     print(f'\nescrito {salida}')
     print('cargar con:')
     print(f'   docker exec -i <contenedor> mongoimport --db aditivos '
-          f'--collection wikidata --mode=merge --upsertFields=_id < {salida}')
+          f'--collection aditivos --mode=merge --upsertFields=_id < {salida}')
 
 
 if __name__ == '__main__':
-    main(*sys.argv[1:5])
+    main(*sys.argv[1:6])
