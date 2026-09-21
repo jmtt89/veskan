@@ -306,38 +306,59 @@ function main(dir, salida) {
     /*
      * Hallazgos de geno/carcinogenicidad de los expedientes de EFSA.
      *
-     * `hallazgo` NO ES LA CONCLUSION DEL PANEL. Resume lo que encontraron los
-     * ESTUDIOS, y puede decir lo contrario que el dictamen: el indigo carmin
-     * (E132) sale `positivo` y ese mismo dictamen —doi:10.2903/j.efsa.2023.8103—
-     * confirma su IDA de 5 mg/kg y concluye que «no hay preocupacion de
-     * seguridad». Por eso no alimenta `gravedad` y por eso van al lado la
-     * fecha, el titulo y el DOI: para poder ir a leerlo.
+     * `hallazgo` NO ES LA CONCLUSION DEL PANEL. Resume lo que reportaron los
+     * ESTUDIOS del expediente, y puede decir lo contrario que el dictamen: el
+     * indigo carmin (E132) sale `positivo` y ese mismo dictamen
+     * —doi:10.2903/j.efsa.2023.8103— confirma su IDA de 5 mg/kg y concluye
+     * que «no hay preocupacion de seguridad». Por eso no alimenta `gravedad`.
      *
-     * `estudiado` separa «se estudio» de «nadie lo miro», que es lo que de
-     * verdad aporta esta rama: sin ella, un negativo medido y un hueco llegan
-     * iguales.
+     * COMO SE LEE SIN MENTIR: junto a `ida`. Un hallazgo positivo con IDA
+     * vigente es «los estudios reportaron algo y EFSA mantiene una ingesta
+     * admisible»; sin IDA, y con `sin_ida_motivo`, es preocupacion. Y eso no
+     * es deduccion nuestra: cuando EFSA tiene esa preocupacion lo codifica,
+     * `sin_ida_motivo = genotoxicidad`, y no asigna IDA.
+     *
+     * Los tres puntos finales llevan prefijo `hallazgo_` a proposito, para no
+     * colisionar con el trio de `clp`, que es otra cosa —clasificacion legal
+     * del Anexo VI— con los mismos nombres. Y no son booleanos: son el termino
+     * literal de EFSA (Positive, Negative, Ambiguous, No data, Not determined,
+     * Not applicable, Other), porque «negativo» y «nadie lo miro» no se pueden
+     * meter en el mismo booleano sin perder justamente lo que aportan.
      */
     ['hallazgo', 'STRING', (d) => texto(d.genotox?.hallazgo)],
+    // null = no hay ningun expediente. false = los hay y ninguno lo midio.
     ['estudiado', 'BOOLEAN', (d) => (d.genotox == null ? null : !!d.genotox.estudiado)],
-    ['genotoxico', 'STRING', (d) => texto(d.genotox?.genotoxic)],
-    ['mutagenico', 'STRING', (d) => texto(d.genotox?.mutagenic)],
-    ['carcinogenico', 'STRING', (d) => texto(d.genotox?.carcinogenic)],
+    ['hallazgo_genotoxico', 'STRING', (d) => texto(d.genotox?.genotoxic)],
+    ['hallazgo_mutagenico', 'STRING', (d) => texto(d.genotox?.mutagenic)],
+    ['hallazgo_carcinogenico', 'STRING', (d) => texto(d.genotox?.carcinogenic)],
     ['hallazgo_fecha', 'STRING', (d) => texto(d.genotox?.fecha)],
     ['hallazgo_dictamen', 'STRING', (d) => texto(d.genotox?.dictamen)],
     ['hallazgo_doi', 'STRING', (d) => texto(d.genotox?.doi)],
-    ['dictamenes', 'INT32', (d) => numero(d.genotox?.dictamenes)],
-    // Dictamenes ANTERIORES que concluyeron otra cosa. No es un error del
-    // fichero: es que EFSA vuelve sobre el aditivo cuando hay datos nuevos.
-    ['dictamenes_discrepan', 'STRING', (d) => lista(d.genotox?.discrepan)],
+    /*
+     * Lo que fijo ESE MISMO dictamen, cuando lo fijo: 623 de 5.434. Son
+     * hechos, no un juicio sintetizado. Se intento sintetizar uno y se cayo
+     * solo: mapear el descriptor `margin of safety` a «preocupacion»
+     * etiquetaba asi los dictamenes de 2004 y 2016 sobre el dioxido de
+     * titanio, que concluyeron que era aceptable. Ese descriptor dice como se
+     * expreso el valor de referencia, no lo que opina el panel.
+     */
+    ['ida_dictamen', 'DOUBLE', (d) => numero(d.genotox?.ida_dictamen)],
+    ['sin_ida_motivo_dictamen', 'STRING',
+     (d) => texto(d.genotox?.sin_ida_motivo_dictamen)],
+    ['dictamenes_total', 'INT32', (d) => numero(d.genotox?.dictamenes)],
+    // ¿Hay dictamenes en desacuerdo? Y cuales fueron los otros hallazgos.
+    ['dictamenes_discrepan', 'BOOLEAN',
+     (d) => (d.genotox == null ? null : !!d.genotox.discrepan)],
+    ['hallazgos_previos', 'STRING', (d) => lista(d.genotox?.discrepan)],
   ]);
 
   /*
    * El historial: una fila por dictamen anterior.
    *
-   * Sin esta tabla la columna `hallazgo` es un numero sin contexto. Con ella
-   * se ve por que el dioxido de titanio cambio: negativo en 2016, 2018 y 2019,
-   * positivo en 2021 —y fue ese ultimo el que llevo a retirarlo de la lista de
-   * la Union—. Aplastar los doce dictamenes en uno daba la conclusion
+   * Sin esta tabla la columna `hallazgo` es un dato sin contexto. Con ella se
+   * ve por que el dioxido de titanio cambio: negativo en 2004, 2016, 2018 y
+   * 2019, positivo en 2021 —y fue ese ultimo el que llevo a retirarlo de la
+   * lista de la Union—. Aplastar los seis dictamenes en uno daba la conclusion
    * contraria segun el orden en que se leyeran las filas.
    */
   const historial = [];
@@ -349,8 +370,14 @@ function main(dir, salida) {
   tabla(salida, 'oft_historial', historial, [
     ['uuid', 'STRING', (r) => r.uuid],
     ['fecha', 'STRING', (r) => texto(r.fecha)],
+    // Mismo vocabulario que `oft.hallazgo`: positivo, ambiguo, negativo,
+    // sin-dato.
     ['hallazgo', 'STRING', (r) => texto(r.hallazgo)],
+    // El TITULO del dictamen, no un identificador. El identificador es el doi.
     ['dictamen', 'STRING', (r) => texto(r.titulo)],
+    ['doi', 'STRING', (r) => texto(r.doi)],
+    ['ida_dictamen', 'DOUBLE', (r) => numero(r.ida_dictamen)],
+    ['sin_ida_motivo_dictamen', 'STRING', (r) => texto(r.sin_ida_motivo_dictamen)],
   ]);
 
   tabla(salida, 'iarc', D.iarc, [

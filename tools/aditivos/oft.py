@@ -96,6 +96,18 @@ SIN_IDA = {
 }
 
 
+# Un DOI tal cual lo escribe EFSA: `doi:10.2903/...`, `doi: 10.2903/...` y
+# `doi. org/10.2903/...` conviven en el mismo fichero -292 de 9.170 con una de
+# las dos formas raras-. Se publica desnudo para que el consumidor componga
+# `https://doi.org/<doi>` sin tener que quitar prefijos ni espacios.
+DOI = re.compile(r'(10\.\d{4,9}/\S+)')
+
+
+def doi_limpio(v):
+    m = DOI.search(str(v)) if v else None
+    return m.group(1) if m else None
+
+
 def motivo_sin_ida(justificacion):
     if not justificacion:
         return None
@@ -175,8 +187,38 @@ def main(ruta_oft, salida, version='OpenFoodTox 3.0 (Zenodo 19388272)'):
             'param_code': r.get('EFSA PARAM CODE'),
         }
 
+    fecha_dossier = {}
+    for r in lib.filas('DOSSIER'):
+        u = r.get('Document UUID')
+        if not u:
+            continue
+        f = r.get('LiteratureReference.DateOfEvaluation')
+        if not f:
+            # Algunos dictamenes solo traen la fecha dentro de un comentario.
+            m = re.search(r'(\d{4}-\d{2}-\d{2})',
+                          str(r.get('DossierSubject.DossierSubmissionRemark') or ''))
+            f = m.group(1) if m else None
+        fecha_dossier[u] = {
+            'fecha': str(f)[:10] if f else None,
+            'titulo': r.get('LiteratureReference.EFSAOutputTitle'),
+            'doi': doi_limpio(
+                r.get('LiteratureReference.LinkToPersistentIdentifier')),
+        }
+    # Tanto los resumenes de endpoint como las fichas de valores de
+    # referencia cuelgan de un dictamen, y por eso se pueden emparejar: lo
+    # que encontraron los estudios y lo que EFSA concluyo, del MISMO acto.
+    dossier_de_doc = {}
+    for r in lib.filas('DOSSIER_DOCS'):
+        if r.get('DOCUMENT TYPE') in ('ENDPOINT_SUMMARY', 'FLEXIBLE_SUMMARY'):
+            dossier_de_doc[r.get('DOCUMENT UUID')] = r.get('DOSSIER UUID')
+
     # Valores de referencia. `Parent UUID` es la sustancia, en un salto.
     valores, criticos, otros = {}, {}, {}
+    # Lo que EFSA concluyo, dictamen a dictamen. Va por separado de
+    # `valores` porque aquello se queda con la IDA mas protectora de todas
+    # y aqui hace falta la de CADA acto, para poder ponerla al lado de sus
+    # propios hallazgos.
+    conclusiones = {}
     for r in lib.filas('FLEX_SUM.ToxRefValues'):
         s = r.get('Parent UUID')
         if s not in sustancias:
@@ -202,6 +244,18 @@ def main(ruta_oft, salida, version='OpenFoodTox 3.0 (Zenodo 19388272)'):
             'poblacion': r.get(IDA + 'Population'),
             'organismo': r.get(IDA + 'AssessmentBody'),
         }
+        du = dossier_de_doc.get(r.get('Document UUID'))
+        c = (conclusiones.setdefault(s, {}).setdefault(
+                du, {'ida': None, 'sin_ida_motivo': None,
+                     'justificacion': None})
+             if du else None)
+        if c is not None:
+            if v['ida'] is not None and c['ida'] is None:
+                c['ida'] = v['ida']
+            if v['sin_ida_motivo'] and not c['sin_ida_motivo']:
+                c['sin_ida_motivo'] = v['sin_ida_motivo']
+                c['justificacion'] = v['sin_ida_justificacion']
+
         if not any(v[k] for k in ('ida', 'sin_ida')):
             # La fila no trae IDA, pero puede traer otro valor de referencia o
             # el motivo de que no lo haya. Antes se descartaba aqui mismo.
@@ -302,27 +356,6 @@ def main(ruta_oft, salida, version='OpenFoodTox 3.0 (Zenodo 19388272)'):
     # cualquier otra -o peor, con la que caiga la ultima al recorrer la hoja-
     # da exactamente la conclusion contraria a la realidad. Por eso cada
     # hallazgo se FECHA por su dictamen y manda el mas reciente que diga algo.
-    fecha_dossier = {}
-    for r in lib.filas('DOSSIER'):
-        u = r.get('Document UUID')
-        if not u:
-            continue
-        f = r.get('LiteratureReference.DateOfEvaluation')
-        if not f:
-            # Algunos dictamenes solo traen la fecha dentro de un comentario.
-            m = re.search(r'(\d{4}-\d{2}-\d{2})',
-                          str(r.get('DossierSubject.DossierSubmissionRemark') or ''))
-            f = m.group(1) if m else None
-        fecha_dossier[u] = {
-            'fecha': str(f)[:10] if f else None,
-            'titulo': r.get('LiteratureReference.EFSAOutputTitle'),
-            'doi': r.get('LiteratureReference.LinkToPersistentIdentifier'),
-        }
-    dossier_de_doc = {}
-    for r in lib.filas('DOSSIER_DOCS'):
-        if r.get('DOCUMENT TYPE') == 'ENDPOINT_SUMMARY':
-            dossier_de_doc[r.get('DOCUMENT UUID')] = r.get('DOSSIER UUID')
-
     CAMPOS = ('genotoxic', 'mutagenic', 'carcinogenic')
     # Para resolver las dos mitades de un mismo dictamen. No es una escala de
     # gravedad: es cuanto DICE cada respuesta.
@@ -378,8 +411,20 @@ def main(ruta_oft, salida, version='OpenFoodTox 3.0 (Zenodo 19388272)'):
     genotox = {}
     for u, por_dictamen in dictamenes.items():
         ds = list(por_dictamen.values())
-        for d in ds:
+        for clave, d in por_dictamen.items():
             d['hallazgo'] = clasificar(d)
+            # Lo que EFSA fijo EN ESE MISMO dictamen. Son hechos, no un
+            # juicio: la IDA que asigno, o el motivo codificado de no asignar
+            # ninguna. No se sintetiza un veredicto a partir de ellos.
+            #
+            # Se intento, y se cayo solo: mapear el descriptor
+            # `margin of safety` a «preocupacion» etiquetaba asi los
+            # dictamenes de 2004 y 2016 sobre el dioxido de titanio, que
+            # concluyeron que era aceptable. Ese descriptor dice como se
+            # expreso el valor de referencia, no lo que opina el panel.
+            c = (conclusiones.get(u) or {}).get(clave) or {}
+            d['ida_dictamen'] = c.get('ida')
+            d['sin_ida_motivo_dictamen'] = c.get('sin_ida_motivo')
         # El mas reciente que DIGA algo. Un dictamen sin fecha no puede
         # desbancar a uno fechado: va al final.
         dichos = [d for d in ds if d['hallazgo'] != 'sin-dato']
@@ -392,6 +437,11 @@ def main(ruta_oft, salida, version='OpenFoodTox 3.0 (Zenodo 19388272)'):
             **{c: mejor.get(c) for c in CAMPOS if mejor.get(c)},
             'hallazgo': mejor['hallazgo'],
             'estudiado': mejor['hallazgo'] != 'sin-dato',
+            # La otra mitad de la fila. Sin ella `hallazgo: positivo` se lee
+            # como si EFSA hubiera dictaminado eso, y en el indigo carmin dice
+            # lo contrario.
+            'ida_dictamen': mejor['ida_dictamen'],
+            'sin_ida_motivo_dictamen': mejor['sin_ida_motivo_dictamen'],
             'fecha': mejor['fecha'],
             'dictamen': mejor['titulo'],
             'doi': mejor['doi'],
@@ -399,7 +449,9 @@ def main(ruta_oft, salida, version='OpenFoodTox 3.0 (Zenodo 19388272)'):
             # Dictamenes anteriores que concluyeron otra cosa. No es un error:
             # es la historia del aditivo, y conviene poder leerla.
             'discrepan': sorted(otras_conclusiones) or None,
-            'historial': ([{k: d[k] for k in ('fecha', 'hallazgo', 'titulo')}
+            'historial': ([{k: d[k] for k in
+                            ('fecha', 'hallazgo', 'titulo', 'doi',
+                             'ida_dictamen', 'sin_ida_motivo_dictamen')}
                            for d in orden[1:]] if len(orden) > 1 else None),
         }
 
@@ -455,6 +507,17 @@ def main(ruta_oft, salida, version='OpenFoodTox 3.0 (Zenodo 19388272)'):
     for v in ('positivo', 'ambiguo', 'negativo', 'sin-dato'):
         if reparto.get(v):
             print(f'      {reparto[v]:>4}  {v}')
+    con_ida_dict = sum(1 for d in genotox.values()
+                       if d['ida_dictamen'] is not None)
+    motivos_dict = {}
+    for d in genotox.values():
+        m = d['sin_ida_motivo_dictamen']
+        if m:
+            motivos_dict[m] = motivos_dict.get(m, 0) + 1
+    print(f'      con IDA fijada en ESE dictamen  : {con_ida_dict}')
+    print(f'      con motivo de no fijarla        : {sum(motivos_dict.values())}')
+    for k, n in sorted(motivos_dict.items(), key=lambda x: -x[1]):
+        print(f'         {n:>4}  {k}')
     varios = sum(1 for d in genotox.values() if d['dictamenes'] > 1)
     discrepan = sum(1 for d in genotox.values() if d['discrepan'])
     sin_fecha = sum(1 for d in genotox.values() if not d['fecha'])
