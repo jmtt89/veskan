@@ -92,8 +92,36 @@ def objetos(js):
 
 
 def a_json(fragmento):
-    """Notacion de objeto JS -> JSON. Las claves van sin comillas."""
+    """
+    Notacion de objeto JS -> JSON.
+
+    Dos diferencias con JSON, y la segunda costo una clasificacion:
+
+    1. Las claves van sin comillas.
+    2. Los valores pueden ir entre COMILLAS SIMPLES, que JSON no admite. IARC
+       las usa cuando el texto lleva comillas dobles dentro:
+
+           comment:'The term "Talc" includes "Talc containing asbestiform..."'
+
+       La primera version solo arreglaba las claves, asi que estos registros
+       no convertian y se descartaban EN SILENCIO: 20 objetos de 1.128, de los
+       cuales 11 traian grupo y CAS. Entre ellos el talco, que la IARC
+       clasifico 2A en 2024 y es el aditivo E553b.
+
+    Las comillas dobles de dentro se escapan antes de cambiar las de fuera; al
+    reves, el resultado seria JSON invalido de otra manera.
+    """
+    def comilla_simple(m):
+        return '"' + m.group(1).replace('\\', '\\\\').replace('"', '\\"') + '"'
+
     s = re.sub(r'([{,])\s*([A-Za-z_]\w*)\s*:', r'\1"\2":', fragmento)
+    # Solo los valores: van detras de `":`, nunca al principio del objeto.
+    s = re.sub(r"(?<=:)'((?:[^'\\]|\\.)*)'", comilla_simple, s)
+    # `!0` y `!1` son el true y el false del JavaScript minificado. Los usa
+    # `in_prep`, que marca una monografia ANUNCIADA pero aun sin publicar: son
+    # 9 clasificaciones, y descartarlas en silencio ocultaba que existen.
+    s = re.sub(r'(?<=:)!0\b', 'true', s)
+    s = re.sub(r'(?<=:)!1\b', 'false', s)
     try:
         return json.loads(s)
     except json.JSONDecodeError:
@@ -146,6 +174,15 @@ def main(salida, cache=None):
             'volumen': [str(v) for v in (d.get('volume') or [])],
             'anio': d.get('year'),
             'anio_evaluacion': d.get('yeareval'),
+            # La monografia esta anunciada pero todavia no publicada. El
+            # veredicto existe; el documento que lo sustenta, aun no.
+            'en_preparacion': bool(d.get('in_prep')),
+            # QUE ABARCA la clasificacion. Lo traen 95 registros y cambia como
+            # hay que leerlos: el del talco aclara que el termino incluye «talc
+            # containing asbestiform fibres other than asbestos», que no es lo
+            # mismo que el talco alimentario. Sin esta nota, un grupo 2A se lee
+            # como si fuera de la sustancia sin mas.
+            'comentario': limpiar(d['comment']) if d.get('comment') else None,
             'fuente': {'url': URL, 'consultado': ahora},
         })
 

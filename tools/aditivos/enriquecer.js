@@ -155,6 +155,10 @@ a.find({'enlaces.off.0': {$exists: true}}).forEach(d => {
     a.updateOne({_id: d._id}, {$set: {iarc: {
       grupo: i.grupo, significado: i.significado, nombre: i.nombre,
       volumen: i.volumen, anio: i.anio, via: 'cas',
+      // Que abarca la clasificacion. Sin esto, el 2A del talco se lee como si
+      // fuera del talco alimentario y no de lo que IARC evaluo de verdad.
+      comentario: i.comentario || null,
+      en_preparacion: !!i.en_preparacion,
     }}});
     nIarc++;
   }

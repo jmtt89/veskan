@@ -311,8 +311,13 @@ function main(dir, salida) {
     ['significado', 'STRING', (d) => texto(d.significado)],
     ['cas', 'STRING', (d) => lista(d.cas)],
     ['volumen', 'STRING', (d) => lista(d.volumen)],
-    ['anio', 'INT32', (d) => numero(d.anio)],
+    ['anio', 'STRING', (d) => texto(d.anio)],
     ['anio_evaluacion', 'INT32', (d) => numero(d.anio_evaluacion)],
+    // 95 registros aclaran QUE abarca la clasificacion, y eso cambia como se
+    // leen: el del talco dice que el termino incluye fibras asbestiformes.
+    ['comentario', 'STRING', (d) => texto(d.comentario)],
+    // Monografia anunciada pero sin publicar.
+    ['en_preparacion', 'BOOLEAN', (d) => !!d.en_preparacion],
   ]);
 
   tabla(salida, 'clp', D.clp, [
