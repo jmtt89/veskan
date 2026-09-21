@@ -86,6 +86,18 @@ function claim(d, p) {
 }
 
 const texto = (v) => (v == null ? null : String(v));
+
+/**
+ * `E452(iv)`, `E452iv` y `E 452 IV` son el mismo numero: `452iv`. Wikidata usa
+ * las tres formas. Es la misma normalizacion que `numero_e()` en `enlazar.py`.
+ */
+function numeroE(v) {
+  if (v == null) return null;
+  let t = String(v).trim().toUpperCase().replace(/ /g, '');
+  if (t.startsWith('E')) t = t.slice(1);
+  t = t.replace(/\((\w+)\)$/, '$1');
+  return /^\d{3,4}[A-Z]*$/.test(t) ? t.toLowerCase() : null;
+}
 const lista = (v) => (Array.isArray(v) && v.length ? v.join('|') : null);
 const numero = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
 
@@ -146,8 +158,15 @@ function main(dir, salida) {
     // distingue a las dos entidades que reclaman el mismo numero E.
     const conEvidencia = !!(d.gravedad?.nivel != null || d.iarc || d.clp
                             || d.oft?.valor || d.oft?.critico);
+    const declarados = new Set(claim(d, 'P628').map(numeroE).filter(Boolean));
     for (const t of d.enlaces?.off || []) {
-      tags.push({ wikidata: d._id, con_evidencia: conEvidencia, ...t });
+      const n = /^[a-z]{2}:e(\d{3,4}[a-z]*)$/.exec(t.tag);
+      tags.push({
+        wikidata: d._id,
+        con_evidencia: conEvidencia,
+        declara_numero_e: n ? declarados.has(n[1]) : null,
+        ...t,
+      });
     }
   }
   /*
@@ -179,7 +198,32 @@ function main(dir, salida) {
     ['nombre_en', 'STRING', (r) => texto(r.nombre_en)],
     ['via', 'STRING', (r) => texto(r.via)],
     ['items', 'INT32', (r) => porTag[r.tag] || 1],
+    /*
+     * `con_evidencia` es ANCHO a proposito: cierto si el item lleva nivel de
+     * gravedad O clasificacion de IARC O del CLP O un valor de OpenFoodTox. Si
+     * lo que necesitas es afirmar que hay una EVALUACION DE PELIGRO, no uses
+     * esta columna: cruza con `gravedad`, que es literal. Son cuatro los tags
+     * donde unos items tienen fila en `gravedad` y otros no —E553b, E523,
+     * E407a y E924b— y nueve los que cambian segun cual de las dos condiciones
+     * uses.
+     */
     ['con_evidencia', 'BOOLEAN', (r) => !!r.con_evidencia],
+    /*
+     * ¿Confirma Wikidata que este item lleva ESE numero E, por P628?
+     *
+     * Es lo que separa «dos fichas de la misma sustancia» de «Open Food Facts
+     * apunta este numero E a otra sustancia». En el E523 los dos items
+     * declaran E523 —son el sulfato anhidro y su dodecahidrato—, y en el E553b
+     * lo declara el que lleva los datos. Pero en el E924b el item con
+     * evaluacion es el bromato de POTASIO, que no declara ningun numero E, y
+     * en el E407a es el carragenano, que declara E407 y no E407a.
+     *
+     * `false` NO significa enlace erroneo, y son 198 de 770: el etanol no
+     * declara E1510 en Wikidata y el enlace de Open Food Facts es correcto.
+     * Significa que Wikidata no lo confirma, y eso solo pesa cuando `items`
+     * es mayor que uno y hay que decidir de cual se habla.
+     */
+    ['declara_numero_e', 'BOOLEAN', (r) => r.declara_numero_e],
   ]);
 
   // --- gravedad ------------------------------------------------------------
