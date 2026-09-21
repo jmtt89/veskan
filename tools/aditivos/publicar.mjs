@@ -480,13 +480,20 @@ function main(dir, salida) {
   ]);
 
   /*
-   * El historial: una fila por dictamen anterior.
+   * El historial: una fila por dictamen, INCLUIDO el que se cita.
    *
    * Sin esta tabla la columna `hallazgo` es un dato sin contexto. Con ella se
    * ve por que el dioxido de titanio cambio: negativo en 2004, 2016, 2018 y
    * 2019, positivo en 2021 —y fue ese ultimo el que llevo a retirarlo de la
    * lista de la Union—. Aplastar los seis dictamenes en uno daba la conclusion
    * contraria segun el orden en que se leyeran las filas.
+   *
+   * LLEVA TAMBIEN EL CITADO, y antes no. Llevar «los demas» convertia la
+   * consulta natural -las filas de una sustancia ordenadas por fecha- en una
+   * cronologia incompleta a la que le faltaba justo el hito: en el dioxido de
+   * titanio terminaba en el dictamen de PIENSOS del 5 de mayo, resaltado como
+   * el giro, cuando el giro fue el de alimentos del 25 de marzo, que vivia en
+   * la otra tabla. `citado` dice cual resume la fila de `oft`.
    */
   const historial = [];
   for (const d of D.oft) {
@@ -506,9 +513,16 @@ function main(dir, salida) {
     ['ida_dictamen', 'DOUBLE', (r) => numero(r.ida_dictamen)],
     ['sin_ida_motivo_dictamen', 'STRING', (r) => texto(r.sin_ida_motivo_dictamen)],
     ['evaluacion', 'STRING', (r) => texto(r.evaluacion)],
-    ['evaluacion_texto', 'STRING', (r) => texto(r.evaluacion_texto)],
+    // En la fila citada va vacio a proposito: ese texto ya esta en `oft`, y
+    // duplicarlo costaba 357 KB de las 5.424 filas que se anadieron al meter
+    // el citado dentro de la cronologia. Para el resto es el unico sitio
+    // donde se puede comprobar la etiqueta, asi que ahi se conserva.
+    ['evaluacion_texto', 'STRING',
+     (r) => (r.citado ? null : texto(r.evaluacion_texto))],
     ['panel', 'STRING', (r) => texto(r.panel)],
     ['dominio', 'STRING', (r) => texto(r.dominio)],
+    // El que resume la fila de `oft`. Uno por sustancia.
+    ['citado', 'BOOLEAN', (r) => !!r.citado],
   ]);
 
   tabla(salida, 'iarc', D.iarc, [

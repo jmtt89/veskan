@@ -511,11 +511,23 @@ def main(ruta_oft, salida, version='OpenFoodTox 3.0 (Zenodo 19388272)'):
         comida = [d for d in candidatos if not d['piensos']]
         orden = sorted(comida or candidatos,
                        key=lambda d: (d['fecha'] or ''), reverse=True)
-        # El historial los lleva todos, tambien los de piensos: son parte de
-        # la historia del compuesto aunque no sean el dictamen que se cita.
-        resto = sorted([d for d in candidatos if d is not orden[0]],
-                       key=lambda d: (d['fecha'] or ''), reverse=True)
         mejor = orden[0]
+        # EL HISTORIAL LOS LLEVA TODOS, INCLUIDO EL QUE SE CITA.
+        #
+        # Antes llevaba «los demas» y eso convertia la consulta natural -sacar
+        # las filas de una sustancia y ordenarlas por fecha- en una cronologia
+        # incompleta a la que le faltaba justo el hito. En el dioxido de
+        # titanio la linea de tiempo terminaba en el dictamen de PIENSOS del 5
+        # de mayo, resaltado como el giro, cuando el giro fue el de alimentos
+        # del 25 de marzo, que estaba en la otra tabla. Quien la pintara sin
+        # darse cuenta contaba la historia mal.
+        #
+        # Con `citado` se distingue cual es el que resume la fila de `oft`, y
+        # la cronologia sale entera sin unir dos tablas.
+        resto = sorted(candidatos, key=lambda d: (d['fecha'] or ''),
+                       reverse=True)
+        for d in resto:
+            d['citado'] = d is mejor
         otras_conclusiones = ({d['hallazgo'] for d in dichos}
                               - {mejor['hallazgo']})
         genotox[u] = {
@@ -547,7 +559,7 @@ def main(ruta_oft, salida, version='OpenFoodTox 3.0 (Zenodo 19388272)'):
                             ('fecha', 'hallazgo', 'titulo', 'doi',
                              'ida_dictamen', 'sin_ida_motivo_dictamen',
                              'evaluacion', 'evaluacion_texto',
-                             'panel', 'dominio')}
+                             'panel', 'dominio', 'citado')}
                            for d in resto] if resto else None),
         }
 
