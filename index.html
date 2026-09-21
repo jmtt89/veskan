@@ -13,6 +13,114 @@
     <link rel="icon" href="icons/favicon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="icons/icon-192.png" />
     <title>Veskan — análisis nutricional por código de barras</title>
+
+    <!--
+      La canónica es absoluta a propósito, aunque `base` sea relativa: el
+      contenido es el mismo servido desde el dominio de Pages, desde una copia
+      local o desde una rama de previsualización, y sin esto cada copia compite
+      con el original.
+    -->
+    <link rel="canonical" href="https://jmtt89.github.io/veskan/" />
+    <meta name="robots" content="index, follow, max-image-preview:large" />
+    <meta name="author" content="Veskan" />
+    <link rel="license" href="https://www.gnu.org/licenses/agpl-3.0.html" />
+
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Veskan" />
+    <meta property="og:locale" content="es_ES" />
+    <meta property="og:url" content="https://jmtt89.github.io/veskan/" />
+    <meta property="og:title" content="Veskan — análisis nutricional por código de barras" />
+    <meta
+      property="og:description"
+      content="Escanea el código de barras de un producto y obtén una puntuación de salud abierta y auditable, basada en Nutri-Score 2023, NOVA, evaluaciones de aditivos de EFSA y el modelo de perfil de nutrientes de la OPS. Todo el cálculo ocurre en tu navegador."
+    />
+    <meta property="og:image" content="https://jmtt89.github.io/veskan/icons/icon-512.png" />
+    <meta property="og:image:width" content="512" />
+    <meta property="og:image:height" content="512" />
+    <meta property="og:image:alt" content="Icono de Veskan" />
+    <meta name="twitter:card" content="summary" />
+    <!--
+      Datos estructurados. Tres cosas distintas y por eso tres nodos:
+
+        SoftwareApplication  la aplicación, para quien la busque para usarla
+        Dataset              la base de peligro de aditivos, que es contenido
+                             propio y es lo que hace falta para que la
+                             indexen buscadores de datos y no sólo de páginas
+        SoftwareSourceCode   el código, que es AGPL y auditable, y es media
+                             la razón de ser del proyecto
+
+      `offers` con precio cero está porque sin él algunos validadores tratan
+      una aplicación sin precio como incompleta, no porque se venda.
+    -->
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@graph": [
+          {
+            "@type": "SoftwareApplication",
+            "@id": "https://jmtt89.github.io/veskan/#app",
+            "name": "Veskan",
+            "url": "https://jmtt89.github.io/veskan/",
+            "applicationCategory": "HealthApplication",
+            "operatingSystem": "Any (navegador web)",
+            "browserRequirements": "Requiere JavaScript y, para escanear, acceso a la cámara.",
+            "inLanguage": "es",
+            "isAccessibleForFree": true,
+            "offers": { "@type": "Offer", "price": "0", "priceCurrency": "EUR" },
+            "license": "https://www.gnu.org/licenses/agpl-3.0.html",
+            "description": "Escanea el código de barras de un producto y obtén una puntuación de salud de 0 a 100, abierta y auditable. El análisis se ejecuta entero en el navegador, sin servidor y sin enviar lo que escaneas a ningún sitio.",
+            "featureList": [
+              "Nutri-Score 2023",
+              "Clasificación NOVA de procesamiento",
+              "Modelo de perfil de nutrientes de la OPS",
+              "Evaluación de aditivos con datos de EFSA, IARC y el Reglamento CLP",
+              "Funciona sin conexión"
+            ]
+          },
+          {
+            "@type": "Dataset",
+            "@id": "https://github.com/jmtt89/veskan-data/tree/aditivos#dataset",
+            "name": "Base de peligro de aditivos alimentarios",
+            "description": "671 aditivos alimentarios con su nivel de peligro, la certeza de esa evaluación y de dónde sale: ingestas diarias admisibles y efectos críticos de EFSA OpenFoodTox, clasificaciones de la IARC, clasificaciones CMR del Anexo VI del Reglamento CLP, estado en el Reglamento (CE) 1333/2008 y prohibiciones y retiradas por jurisdicción, con la frase literal de cada norma.",
+            "url": "https://github.com/jmtt89/veskan-data/tree/aditivos",
+            "inLanguage": "es",
+            "license": "https://opendatacommons.org/licenses/odbl/1-0/",
+            "isAccessibleForFree": true,
+            "creator": { "@type": "Organization", "name": "Veskan" },
+            "keywords": [
+              "aditivos alimentarios",
+              "números E",
+              "EFSA",
+              "IARC",
+              "seguridad alimentaria",
+              "OpenFoodTox"
+            ],
+            "distribution": [
+              {
+                "@type": "DataDownload",
+                "encodingFormat": "application/vnd.apache.parquet",
+                "contentUrl": "https://raw.githubusercontent.com/jmtt89/veskan-data/aditivos/index.json",
+                "description": "17 tablas en Parquet, consultables sin servidor. `index.json` lista cada una con su tamaño y su número de filas."
+              },
+              {
+                "@type": "DataDownload",
+                "encodingFormat": "application/vnd.sqlite3",
+                "contentUrl": "https://raw.githubusercontent.com/jmtt89/veskan-data/aditivos/aditivos.sqlite3",
+                "description": "El corte resuelto por número E que consume la aplicación."
+              }
+            ]
+          },
+          {
+            "@type": "SoftwareSourceCode",
+            "name": "Veskan",
+            "codeRepository": "https://github.com/jmtt89/veskan",
+            "programmingLanguage": "TypeScript",
+            "license": "https://www.gnu.org/licenses/agpl-3.0.html",
+            "about": { "@id": "https://jmtt89.github.io/veskan/#app" }
+          }
+        ]
+      }
+    </script>
   </head>
   <body>
     <div id="app">
