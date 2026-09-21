@@ -63,8 +63,13 @@
  * el resto de artefactos de construccion: de ahi se copia al repositorio de
  * datos cuando se decida publicar.
  */
-import { readFileSync, writeFileSync, mkdirSync, statSync, unlinkSync } from 'node:fs';
-import { join } from 'node:path';
+import { readFileSync, writeFileSync, mkdirSync, statSync, unlinkSync,
+         copyFileSync } from 'node:fs';
+import { join, dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+// El directorio de este script, para dejar ahi la copia que lee la aplicacion.
+const ROOT_TOOLS = dirname(fileURLToPath(import.meta.url));
 import { DatabaseSync } from 'node:sqlite';
 import { parquetWriteBuffer } from 'hyparquet-writer';
 
@@ -118,7 +123,7 @@ function tabla(salida, nombre, filas, cols) {
     nombre, fichero: `${nombre}.parquet`, bytes: statSync(ruta).size,
     filas: filas.length, columnas: cols.map(([n]) => n),
   });
-  const kb = Math.round(statSync(ruta).size / 1024);
+  const kb = Math.round(statSync(ruta).size / 1000);
   console.log(`   ${nombre.padEnd(22)}${String(filas.length).padStart(6)} filas${String(kb).padStart(7)} KB`);
   return filas.length;
 }
@@ -624,14 +629,42 @@ function main(dir, salida) {
   const insP = db.prepare(`INSERT INTO prohibicion VALUES (?,?,?,?,?,?,?,?)`);
 
   let nA = 0, nP = 0;
+  // Cuanto puntuo el item que ocupa ahora mismo cada tag.
+  const mejorPorTag = new Map();
   for (const d of D.aditivos) {
     for (const t of d.enlaces?.off || []) {
-      // Un tag puede estar reclamado por varios items -hay 135 asi-. Gana el
-      // que trae datos: insertar el vacio encima borraria los del bueno.
-      const tieneDatos = !!(d.gravedad || d.oft?.valor || d.iarc || d.clp ||
-                            (d.prohibiciones || []).length);
-      const ya = db.prepare('SELECT nivel, prohibido FROM aditivo WHERE tag=?').get(t.tag);
-      if (ya && !tieneDatos) continue;
+      /*
+       * Un tag puede estar reclamado por varios items -hay 135 asi- y aqui
+       * solo cabe uno, porque la tabla es una fila por tag. Gana el MAS
+       * COMPLETO, y se puntua en vez de mirar si trae «algo».
+       *
+       * La version anterior hacia justo eso -si ya hay fila y yo no traigo
+       * nada, paso; si traigo algo, sobreescribo- y era un ultimo-que-escriba
+       * -gana disfrazado. Se vio en cuanto los polifosfatos concretos
+       * ganaron su IDA de grupo: pasaron de «sin datos» a «con datos» y
+       * pisaron la fila del item generico, que ademas traia el estado legal,
+       * el riesgo de sobreexposicion y los grupos vulnerables. Ocho tags
+       * -E339i, E339ii, E340i, E340ii, E340iii, E452ii, E452iii y E540-
+       * perdieron su «riesgo alto» sin que nada lo avisara.
+       *
+       * No se mezclan campos de varios items a proposito: seria juntar dos
+       * sustancias distintas en una fila. Gana uno entero.
+       */
+      const puntos = (d.gravedad?.nivel != null ? 8 : 0)
+        + ((d.prohibiciones || []).some((x) => x.penaliza) ? 8 : 0)
+        + (d.oft?.valor ? 2 : 0) + (d.oft?.critico ? 1 : 0)
+        + (d.iarc ? 2 : 0) + (d.clp ? 2 : 0)
+        // `ausente` NO puntua igual que `autorizado`: uno es un hallazgo con
+        // su cita del reglamento y el otro es «no lo encontramos». Dar el
+        // mismo peso a los dos hacia que el beta-caroteno, ausente de la
+        // lista, desbancara al caroteno, que esta autorizado en la parte E
+        // con su CELEX. Lo mismo entre la cera microcristalina y la parafina.
+        + (d.legal?.autorizado || d.legal?.retirado
+           || d.legal?.listado_parte_b ? 2 : 0)
+        + (d.off?.riesgo ? 1 : 0)
+        + (d.off?.vulnerables?.length ? 1 : 0);
+      if (mejorPorTag.has(t.tag) && mejorPorTag.get(t.tag) >= puntos) continue;
+      mejorPorTag.set(t.tag, puntos);
 
       const p = (d.prohibiciones || []).filter((x) => x.penaliza);
       insA.run(
@@ -666,7 +699,28 @@ function main(dir, salida) {
   }
   db.exec('VACUUM');
   db.close();
-  const kb = Math.round(statSync(rutaDb).size / 1024);
+
+  /*
+   * La copia que consume la aplicacion.
+   *
+   * `build-taxonomies.mjs` lee `tools/aditivos/aditivos.sqlite3`, que esta
+   * versionado porque integracion continua no tiene Mongo y necesita la base
+   * de peligro para construir `public/data/additives.json`. Hasta ahora ese
+   * fichero se copiaba a mano, es decir: no se copiaba. Quedo dos dias por
+   * detras de lo publicado, y el sitio se desplego con una base vieja sin que
+   * nada lo dijera.
+   *
+   * Es el mismo fallo que ya tuvimos con `index.json` y con el guardia que
+   * silenciaba la ausencia de la base: un paso fuera de la tuberia. Se hace
+   * aqui, y se avisa de que hay que commitearlo.
+   */
+  const rutaApp = resolve(ROOT_TOOLS, 'aditivos.sqlite3');
+  copyFileSync(rutaDb, rutaApp);
+
+  // KB DECIMALES, como `content-length` y como las herramientas del
+  // navegador. Dividir por 1024 y rotular «KB» hacia que el mismo fichero
+  // saliera con una cifra aqui y otra en la cabecera HTTP.
+  const kb = Math.round(statSync(rutaDb).size / 1000);
 
   // ------------------------------------------------------------ indice ----
   const indice = {
@@ -693,10 +747,13 @@ function main(dir, salida) {
   writeFileSync(join(salida, 'index.json'), JSON.stringify(indice, null, 2) + '\n');
   console.log(`\n   ${'index.json'.padEnd(22)}${TABLAS.length} tablas · ` +
               `${indice.total_filas} filas · ` +
-              `${Math.round(indice.total_bytes / 1024)} KB`);
+              `${Math.round(indice.total_bytes / 1000)} KB`);
   console.log(`   aditivo               ${String(nA).padStart(6)} filas`);
   console.log(`   prohibicion           ${String(nP).padStart(6)} filas`);
   console.log(`   ${'aditivos.sqlite3'.padEnd(22)}${String(kb).padStart(13)} KB`);
+  console.log(`   copiada a tools/aditivos/ — es la que lee build:taxonomies,\n`
+    + '   esta versionada y hay que COMMITEARLA para que integracion continua\n'
+    + '   despliegue con esta base y no con la anterior.');
 }
 
 const dirJsonl = process.argv[2];
