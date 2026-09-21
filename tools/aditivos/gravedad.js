@@ -119,6 +119,13 @@ for (const d of a.find({$or: [
   {'clp.clases.0': {$exists: true}},
 ]}).toArray()) {
   let nivel = null, certeza = null, via = null, detalle = null, ademas = null;
+  // De QUE FILA sale el veredicto. `via` dice de que fuente; esto dice de que
+  // registro, para poder volver a el sin reconstruir el cruce por CAS. Hace
+  // falta porque hay veredictos que NO se pueden reproducir cruzando CAS: los
+  // nitratos y nitritos los clasifico IARC por la CONDICION de exposicion
+  // -«ingested nitrate or nitrite under conditions that result in endogenous
+  // nitrosation»-, no por la sal, asi que no hay CAS que case.
+  let origen = null;
 
   const tox = d.oft && d.oft.critico && d.oft.critico.toxicidad;
   const nivelEfecto = tox ? NIVEL_POR_EFECTO[tox] : null;
@@ -169,12 +176,14 @@ for (const d of a.find({$or: [
   if (ganaClp) {
     nivel = clpNivel; certeza = clpCerteza;
     via = 'clp'; detalle = clpDetalle;
+    origen = d.clp.cas || null;
     porClp++;
     if (nivelEfecto) ademas = {nivel: nivelEfecto, efecto: tox,
                                descripcion: DESCRIPCION[nivelEfecto]};
   } else if (grupoIarc) {
     nivel = 1; certeza = CERTEZA_IARC[grupoIarc];
     via = 'iarc'; detalle = 'IARC grupo ' + grupoIarc;
+    origen = d.iarc.nombre || null;
     porIarc++;
     // El efecto critico no desaparece por haber algo mas grave encima.
     if (nivelEfecto) ademas = {nivel: nivelEfecto, efecto: tox,
@@ -182,12 +191,14 @@ for (const d of a.find({$or: [
   } else if (genotox) {
     nivel = 1; certeza = 'probable'; via = 'sin-ida-genotoxicidad';
     detalle = d.oft.valor.sin_ida_justificacion;
+    origen = d.oft.valor_de || null;
     porGenotox++;
     if (nivelEfecto) ademas = {nivel: nivelEfecto, efecto: tox,
                                descripcion: DESCRIPCION[nivelEfecto]};
   } else if (nivelEfecto) {
     nivel = nivelEfecto; certeza = 'establecida';
     via = 'efecto-critico'; detalle = tox;
+    origen = (d.oft.critico && d.oft.critico.estudio_uuid) || d.oft.valor_de || null;
     porEfecto++;
   }
   if (!nivel) continue;
@@ -197,6 +208,9 @@ for (const d of a.find({$or: [
     descripcion: DESCRIPCION[nivel],
     certeza,
     via,
+    // La clave del registro concreto del que sale: uuid de OpenFoodTox, nombre
+    // de la fila de IARC, o CAS del Anexo VI del CLP. Segun la `via`.
+    origen,
     detalle,
     ademas,
     desacuerdo,

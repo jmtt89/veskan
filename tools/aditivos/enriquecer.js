@@ -161,6 +161,9 @@ a.find({'enlaces.off.0': {$exists: true}}).forEach(d => {
   const c = db.clp.findOne({cas: {$in: cs}});
   if (c) {
     a.updateOne({_id: d._id}, {$set: {clp: {
+      // El CAS se conserva para poder citar la fila exacta del Anexo VI de la
+      // que sale el veredicto, no solo decir «lo dice el CLP».
+      cas: c.cas,
       clases: c.clases, peor: c.peor, cancerigeno: c.cancerigeno,
       mutagenico: c.mutagenico, repro: c.repro,
       celex: c.fuente && c.fuente.celex, via: 'cas',

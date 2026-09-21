@@ -75,6 +75,12 @@ def main(ruta_off, salida):
         if fecha:
             con_dictamen += 1
         e = valor(v, 'e_number')
+        # OFF deja el campo vacio en algunas entradas aunque el nombre si lo
+        # lleve: `en:e170` se llama «E170 - Carbonatos de calcio» y su
+        # `e_number` es null. Se deduce del tag, que es la clave canonica.
+        if not e:
+            m = re.match(r'^en:e(\d{3,4}[a-z]*)$', tag)
+            e = m.group(1) if m else None
         filas.append({
             '_id': tag,
             'numero_e': str(e).lower() if e else None,

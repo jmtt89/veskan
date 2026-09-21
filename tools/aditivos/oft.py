@@ -66,7 +66,7 @@ import re
 import sys
 from datetime import datetime, timezone
 
-from extraer import Libro
+from extraer import Libro, arreglar_mojibake
 
 IDA = 'HumanHealthHazardCharacteristics.AcceptableDailyIntake.'
 # La OTRA rama, la que esta version no leia. Ver «LA SEGUNDA RAMA» arriba.
@@ -149,7 +149,8 @@ def otro_valor(r):
         # es la respuesta a «no tiene IDA, pero por que».
         'sin_dosis_motivo': clasificar_descriptor(tipo),
         'valor': valor,
-        'unidad': r.get(OTROS + 'RefValue.Unit') or r.get(OTROS + 'RefValue.Unit.Other'),
+        'unidad': arreglar_mojibake(
+            r.get(OTROS + 'RefValue.Unit') or r.get(OTROS + 'RefValue.Unit.Other')),
         'poblacion': r.get(OTROS + 'Population'),
         'organismo': r.get(OTROS + 'AssessmentBody'),
         'justificacion': just,
@@ -182,11 +183,16 @@ def main(ruta_oft, salida, version='OpenFoodTox 3.0 (Zenodo 19388272)'):
             continue
         v = {
             'ida': numero(r.get(IDA + 'Adi.lowerValue')),
-            'unidad': r.get(IDA + 'Adi.Unit'),
+            'unidad': arreglar_mojibake(r.get(IDA + 'Adi.Unit')),
             # `NoAllocated` marca que EFSA NO asigno IDA. Dice poco por si
             # solo: es verdad tanto cuando no hizo falta -toxicidad muy baja-
             # como cuando no se pudo -genotoxicidad-. Hay que leer el dictamen.
-            'sin_ida': r.get(IDA + 'NoAllocated'),
+            #
+            # Viene del xlsx como la CADENA "1", no como booleano. Se convierte
+            # aqui: un consumidor que haga `if fila.sin_ida` con la cadena "0"
+            # -si algun dia aparece- acertaria por casualidad y fallaria el dia
+            # que cambie.
+            'sin_ida': bool(r.get(IDA + 'NoAllocated')) or None,
             # El texto tal cual, y nuestra lectura de el. Sin el texto no se
             # puede comprobar la lectura.
             'sin_ida_justificacion': r.get(IDA + 'Justification'),

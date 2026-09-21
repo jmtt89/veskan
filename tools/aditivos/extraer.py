@@ -32,6 +32,20 @@ def indice_columna(ref):
     return n - 1
 
 
+
+# El xlsx trae algunas celdas con la UTF-8 pasada dos veces: «Âµg/kg» en vez
+# de «µg/kg». Pasa en 5 de 4.387 filas, todas unidades. Se arregla deshaciendo
+# la doble codificacion, no con una tabla de reemplazos: la tabla solo cubre
+# los casos que ya se vieron.
+def arreglar_mojibake(v):
+    if not isinstance(v, str) or 'Â' not in v:
+        return v
+    try:
+        return v.encode('latin-1').decode('utf-8')
+    except (UnicodeEncodeError, UnicodeDecodeError):
+        return v
+
+
 class Libro:
     def __init__(self, ruta):
         self.z = zipfile.ZipFile(ruta)

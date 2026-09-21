@@ -103,8 +103,12 @@ def main(salida, cache=None):
     ahora = datetime.now(timezone.utc).isoformat()
     filas = []
     for t in titulos:
-        t = (t.replace('&#x2014;', '—').replace('&#xA7;', '§')
-              .replace('&amp;', '&').strip())
+        # Las entidades numericas se decodifican TODAS, no una lista: el CFR
+        # usa las que le conviene y una lista fija deja pasar las nuevas.
+        # Aparecian crudas dos nombres, con `&#x2032;` -el prima de «4,4'»-.
+        t = re.sub(r'&#x([0-9A-Fa-f]+);', lambda m: chr(int(m.group(1), 16)), t)
+        t = re.sub(r'&#(\d+);', lambda m: chr(int(m.group(1))), t)
+        t = t.replace('&amp;', '&').strip()
         m = re.match(r'§\s*189\.(\d+)\s+(.+?)\.?$', t)
         if not m:
             continue

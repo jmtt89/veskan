@@ -102,10 +102,22 @@ function tabla(salida, nombre, filas, cols) {
   const buf = parquetWriteBuffer({ columnData });
   const ruta = join(salida, `${nombre}.parquet`);
   writeFileSync(ruta, Buffer.from(buf));
+  TABLAS.push({
+    nombre, fichero: `${nombre}.parquet`, bytes: statSync(ruta).size,
+    filas: filas.length, columnas: cols.map(([n]) => n),
+  });
   const kb = Math.round(statSync(ruta).size / 1024);
   console.log(`   ${nombre.padEnd(22)}${String(filas.length).padStart(6)} filas${String(kb).padStart(7)} KB`);
   return filas.length;
 }
+
+/*
+ * Lo que se ha escrito, para el indice. Se acumula segun se generan las tablas
+ * en vez de listarse aparte: un indice escrito a mano se queda viejo en cuanto
+ * se añade una tabla, y eso ya paso -se publicaron tres tablas nuevas y el
+ * indice siguio anunciando trece-.
+ */
+const TABLAS = [];
 
 function main(dir, salida) {
   mkdirSync(salida, { recursive: true });
@@ -158,6 +170,88 @@ function main(dir, salida) {
     ['solo_una_fuente', 'STRING', (d) => texto(d.gravedad.solo_una_fuente)],
   ]);
 
+  // --- diccionarios: la escala entera, no solo lo que esta poblado --------
+  /*
+   * LOS OCHO NIVELES, incluidos los que estan VACIOS.
+   *
+   * Hoy solo hay aditivos en 1, 2, 4, 5, 6 y 7. Publicar unicamente esos seis
+   * haria que una interfaz pintase una escala de seis peldaños, y la escala es
+   * de ocho: el 3 y el 8 estan vacios, que no es lo mismo que no existir.
+   */
+  const NIVELES = [
+    [1, 'genotóxico o carcinogénico', 'Alguien evaluó y concluyó que puede causar cáncer o dañar el ADN. No sale de OpenFoodTox: a un carcinógeno genotóxico no se le asigna IDA, precisamente porque no se le supone dosis segura.'],
+    [2, 'afecta al desarrollo o la reproducción', 'Efectos sobre el feto, el desarrollo o la función reproductora.'],
+    [3, 'endocrino', 'Altera el sistema hormonal.'],
+    [4, 'neurotóxico', 'Daña el sistema nervioso.'],
+    [5, 'daño a órgano diana', 'Hígado, riñón, pulmón o corazón.'],
+    [6, 'inmunotóxico o hematopoyético', 'Sistema inmunitario o formación de la sangre.'],
+    [7, 'sistémico reversible', 'Efecto general que remite al cesar la exposición.'],
+    [8, 'local o digestivo', 'Irritación o efecto local en el tubo digestivo.'],
+  ];
+  tabla(salida, 'niveles', NIVELES, [
+    ['nivel', 'INT32', (r) => r[0]],
+    ['etiqueta', 'STRING', (r) => r[1]],
+    ['descripcion', 'STRING', (r) => r[2]],
+    ['poblado', 'BOOLEAN',
+     (r) => D.aditivos.some((d) => d.gravedad && d.gravedad.nivel === r[0])],
+  ]);
+
+  /*
+   * ORDEN DE `certeza`, y un aviso que importa mas que el orden.
+   *
+   * `confirmada`, `probable` y `posible` son UN eje: cuanto de seguro se esta
+   * de que causa cancer, y salen de IARC (1, 2A, 2B) o del CLP (1A, 1B, 2).
+   * Esas tres si se ordenan entre si.
+   *
+   * `establecida` es OTRA COSA y no compite con ellas. Significa que el efecto
+   * esta MEDIDO: es el que fijo la IDA en un estudio de OpenFoodTox. Decir que
+   * «establecida» va antes o despues de «posible» es un error de categoria,
+   * como preguntar si un kilo pesa mas que un martes.
+   *
+   * Por eso van `eje` y `rango`: dentro de un eje el rango ordena; entre ejes
+   * no se comparan. Una interfaz que las mezcle en una sola escala mentira.
+   */
+  const CERTEZAS = [
+    ['confirmada', 'sospecha-de-cancer', 3, 'Evaluado y confirmado: IARC grupo 1, o CLP categoría 1A.'],
+    ['probable', 'sospecha-de-cancer', 2, 'IARC grupo 2A, o CLP categoría 1B.'],
+    ['posible', 'sospecha-de-cancer', 1, 'IARC grupo 2B, o CLP categoría 2. No es ausencia de datos: la naturaleza del daño está identificada y lo que falta es confirmación.'],
+    ['establecida', 'efecto-medido', 0, 'El efecto está medido: es el que fijó la ingesta diaria admisible en un estudio. No se compara con las tres anteriores.'],
+  ];
+  tabla(salida, 'certezas', CERTEZAS, [
+    ['certeza', 'STRING', (r) => r[0]],
+    ['eje', 'STRING', (r) => r[1]],
+    ['rango', 'INT32', (r) => r[2]],
+    ['descripcion', 'STRING', (r) => r[3]],
+  ]);
+
+  // --- de donde sale cada veredicto de gravedad ---------------------------
+  /*
+   * El puente que permite decir «este nivel sale de AQUI» sin reconstruir el
+   * cruce por CAS. Hace falta porque hay cuatro veredictos que NO se pueden
+   * reproducir asi: los nitratos y nitritos (E249-E252) los clasifico IARC por
+   * la CONDICION de exposicion -«ingested nitrate or nitrite under conditions
+   * that result in endogenous nitrosation»- y no por la sal, de modo que no hay
+   * ningun CAS que case.
+   */
+  const origen = D.aditivos.filter((d) => d.gravedad);
+  tabla(salida, 'gravedad_origen', origen, [
+    ['wikidata', 'STRING', (d) => d._id],
+    ['fuente', 'STRING', (d) => d.gravedad.via],
+    // Segun la fuente: uuid de OpenFoodTox, nombre de la fila de IARC, o CAS
+    // del Anexo VI del CLP.
+    ['clave_origen', 'STRING', (d) => texto(d.gravedad.origen)],
+    ['detalle', 'STRING', (d) => texto(d.gravedad.detalle)],
+    // `manual` avisa de que el enlace se escribio a mano y no se puede
+    // reproducir cruzando identificadores.
+    // Un aditivo puede tener efecto critico SIN tener IDA -son cuatro-, y
+    // entonces `valor_via` no existe: la ruta del enlace la lleva
+    // `critico_via`. Leer solo la primera dejaba esos cuatro en nulo.
+    ['via_enlace', 'STRING',
+     (d) => texto(d.gravedad.via === 'iarc' ? (d.iarc && d.iarc.via)
+                : d.gravedad.via === 'clp' ? (d.clp && d.clp.via)
+                : (d.oft && (d.oft.valor_via || d.oft.critico_via)))],
+  ]);
+
   // --- prohibiciones y retiradas, una fila por jurisdiccion ----------------
   // Las secundarias de `tambien` se aplanan aqui: el bromato tiene ocho y
   // dejarlas anidadas las haria invisibles a una consulta.
@@ -196,7 +290,11 @@ function main(dir, salida) {
     ['param_code', 'STRING', (d) => texto(d.param_code)],
     ['ida', 'DOUBLE', (d) => numero(d.valor?.ida)],
     ['ida_unidad', 'STRING', (d) => texto(d.valor?.unidad)],
-    ['sin_ida', 'STRING', (d) => texto(d.valor?.sin_ida)],
+    // BOOLEAN, no cadena. Venia del xlsx como "1", se arreglo en `oft.py`...
+    // y aqui se volvia a convertir en texto con `texto()`, que hacia
+    // String(true) = "true". Peor que antes: "true" invita a `Boolean(x)`, y
+    // eso tambien daria true para la cadena "false" el dia que aparezca.
+    ['sin_ida', 'BOOLEAN', (d) => (d.valor?.sin_ida == null ? null : !!d.valor.sin_ida)],
     ['sin_ida_motivo', 'STRING', (d) => texto(d.valor?.sin_ida_motivo)],
     ['sin_dosis_motivo', 'STRING', (d) => texto(d.sin_dosis_motivo)],
     ['incertidumbre', 'DOUBLE', (d) => numero(d.valor?.incertidumbre)],
@@ -235,6 +333,22 @@ function main(dir, salida) {
     ['listado_parte_b', 'BOOLEAN', (d) => !!d.listado_parte_b],
     ['retirado', 'BOOLEAN', (d) => !!d.retirado],
     ['caducado_el', 'STRING', (d) => texto(d.caducado_el)],
+    /*
+     * El estado en una sola palabra, para no obligar a nadie a combinar tres
+     * booleanos y equivocarse. Los cuatro casos son distintos:
+     *
+     *   autorizado       esta en la parte E, o en un grupo de la C
+     *   retirado         estaba y un acto lo saco, o su nota al pie caduco
+     *   listado-sin-uso  sigue en la parte B pero sin uso alimentario. Es el
+     *                    caso del E171 y del E161g: figuran porque colorean
+     *                    medicamentos. `retirado` es false y eso confunde.
+     *   ausente          no esta en el reglamento. NO es una prohibicion.
+     */
+    ['estado', 'STRING', (d) => (
+      d.autorizado ? 'autorizado'
+        : d.retirado ? 'retirado'
+        : d.listado_parte_b ? 'listado-sin-uso'
+        : 'ausente')],
     ['celex', 'STRING', (d) => texto(d.fuente?.celex)],
   ]);
 
@@ -373,6 +487,33 @@ function main(dir, salida) {
   db.exec('VACUUM');
   db.close();
   const kb = Math.round(statSync(rutaDb).size / 1024);
+
+  // ------------------------------------------------------------ indice ----
+  const indice = {
+    generado: new Date().toISOString(),
+    descripcion:
+      'Base de peligro de aditivos alimentarios. Prohibicion y retirada son ' +
+      'cosas distintas: ver la columna tipo de prohibiciones, y estado en legal_ue.',
+    base: 'https://raw.githubusercontent.com/jmtt89/veskan-data/aditivos/',
+    formato: 'parquet',
+    licencias: {
+      wikidata: 'CC0', 'open-food-facts': 'ODbL-1.0',
+      'efsa-openfoodtox': 'CC-BY-ND',
+      'legislacion-ue': 'Decision 2011/833/UE',
+      'regulacion-eeuu': 'dominio publico', iarc: 'atribucion',
+    },
+    tablas: Object.fromEntries(TABLAS.map((t) => [t.nombre, t])),
+    total_bytes: TABLAS.reduce((a, t) => a + t.bytes, 0),
+    total_filas: TABLAS.reduce((a, t) => a + t.filas, 0),
+    sqlite: {
+      fichero: 'aditivos.sqlite3', bytes: statSync(rutaDb).size,
+      nota: 'corte resuelto por numero E que consume la aplicacion; sin la evidencia',
+    },
+  };
+  writeFileSync(join(salida, 'index.json'), JSON.stringify(indice, null, 2) + '\n');
+  console.log(`\n   ${'index.json'.padEnd(22)}${TABLAS.length} tablas · ` +
+              `${indice.total_filas} filas · ` +
+              `${Math.round(indice.total_bytes / 1024)} KB`);
   console.log(`   aditivo               ${String(nA).padStart(6)} filas`);
   console.log(`   prohibicion           ${String(nP).padStart(6)} filas`);
   console.log(`   ${'aditivos.sqlite3'.padEnd(22)}${String(kb).padStart(13)} KB`);
