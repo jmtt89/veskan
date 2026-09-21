@@ -121,6 +121,42 @@ def numero(v):
         return None
 
 
+# La CONCLUSION DEL PANEL, que EFSA escribe con prefijo codificado dentro de
+# `JustificationAndComments`: «Assessment: some concern; Remarks: ...».
+#
+# 6.013 filas lo traen y el vocabulario es cerrado. Esto NO es el `hallazgo`
+# de END_SUM, que resume los estudios: esto es lo que concluyo el panel. El
+# dioxido de titanio lo ilustra entero -«Assessment: some concern; Remarks:
+# ... a concern for genotoxicity could not be ruled out ... the Panel concluded
+# that E 171 can no longer be considered as safe when used as a food additive»-
+# y es el dictamen que lo saco de la lista de la Union.
+#
+# Se busco antes en END_SUM y en la justificacion de `NoAllocated` y no estaba;
+# vive en la rama de otros valores de referencia.
+EVALUACION = {
+    'no concern': 'sin-preocupacion',
+    'low concern': 'preocupacion-baja',
+    'some concern': 'alguna-preocupacion',
+    'insufficient data': 'datos-insuficientes',
+    'additional data required': 'faltan-datos',
+    'low-quality data': 'datos-de-baja-calidad',
+}
+# Cuanto pesa cada una al resolver varias dentro del MISMO dictamen. Las tres
+# primeras son conclusiones; las otras son huecos y no compiten con ellas.
+PESO_EVALUACION = {'alguna-preocupacion': 5, 'preocupacion-baja': 4,
+                   'sin-preocupacion': 3, 'datos-insuficientes': 2,
+                   'faltan-datos': 2, 'datos-de-baja-calidad': 1}
+# Hasta el primer `;` o `.`: cuatro filas usan punto en vez de punto y coma y
+# sin el corte se llevarian el dictamen entero como si fuera la etiqueta.
+ASSESSMENT = re.compile(r'^\s*Assessment\s*:\s*([^;.]+)', re.I)
+
+
+def evaluacion(texto):
+    """La conclusion del panel, o None si esa fila no la declara."""
+    m = ASSESSMENT.match(texto or '')
+    return EVALUACION.get(m.group(1).strip().lower()) if m else None
+
+
 # Descriptores que NO son una dosis sino la razon de que no la haya. Conviene
 # separarlos porque dicen cosas opuestas: «incomplete dataset» es una laguna,
 # «not deemed necessary» es una evaluacion que concluyo que no hacia falta.
@@ -198,11 +234,20 @@ def main(ruta_oft, salida, version='OpenFoodTox 3.0 (Zenodo 19388272)'):
             m = re.search(r'(\d{4}-\d{2}-\d{2})',
                           str(r.get('DossierSubject.DossierSubmissionRemark') or ''))
             f = m.group(1) if m else None
+        panel = r.get('Domain.ExpertGroup')
         fecha_dossier[u] = {
             'fecha': str(f)[:10] if f else None,
             'titulo': r.get('LiteratureReference.EFSAOutputTitle'),
             'doi': doi_limpio(
                 r.get('LiteratureReference.LinkToPersistentIdentifier')),
+            'panel': panel,
+            'dominio': r.get('Domain.FoodDomain'),
+            # EFSA evalua tambien PIENSOS, y esos dictamenes salen mezclados
+            # con los de alimentos. El de piensos del dioxido de titanio es 41
+            # dias mas reciente que el de alimentos, asi que por fecha ganaba
+            # el equivocado: en una base de aditivos ALIMENTARIOS conviene
+            # citar el que evalua el alimento.
+            'piensos': bool(panel and 'FEEDAP' in str(panel).upper()),
         }
     # Tanto los resumenes de endpoint como las fichas de valores de
     # referencia cuelgan de un dictamen, y por eso se pueden emparejar: lo
@@ -247,7 +292,8 @@ def main(ruta_oft, salida, version='OpenFoodTox 3.0 (Zenodo 19388272)'):
         du = dossier_de_doc.get(r.get('Document UUID'))
         c = (conclusiones.setdefault(s, {}).setdefault(
                 du, {'ida': None, 'sin_ida_motivo': None,
-                     'justificacion': None})
+                     'justificacion': None, 'evaluacion': None,
+                     'evaluacion_texto': None})
              if du else None)
         if c is not None:
             if v['ida'] is not None and c['ida'] is None:
@@ -255,6 +301,19 @@ def main(ruta_oft, salida, version='OpenFoodTox 3.0 (Zenodo 19388272)'):
             if v['sin_ida_motivo'] and not c['sin_ida_motivo']:
                 c['sin_ida_motivo'] = v['sin_ida_motivo']
                 c['justificacion'] = v['sin_ida_justificacion']
+            # La conclusion del panel puede venir en cualquier rama de la
+            # ficha. Dentro del MISMO dictamen manda la mas adversa: si una
+            # rama concluye «some concern» y otra «no concern», el dictamen
+            # tiene una preocupacion.
+            for campo in (IDA + 'JustificationAndComments',
+                          OTROS + 'JustificationAndComments'):
+                e = evaluacion(r.get(campo))
+                if not e:
+                    continue
+                if PESO_EVALUACION.get(e, 0) > \
+                        PESO_EVALUACION.get(c['evaluacion'], 0):
+                    c['evaluacion'] = e
+                    c['evaluacion_texto'] = str(r.get(campo))[:400]
 
         if not any(v[k] for k in ('ida', 'sin_ida')):
             # La fila no trae IDA, pero puede traer otro valor de referencia o
@@ -357,6 +416,12 @@ def main(ruta_oft, salida, version='OpenFoodTox 3.0 (Zenodo 19388272)'):
     # da exactamente la conclusion contraria a la realidad. Por eso cada
     # hallazgo se FECHA por su dictamen y manda el mas reciente que diga algo.
     CAMPOS = ('genotoxic', 'mutagenic', 'carcinogenic')
+    # Los siete terminos que usa EFSA. 154 filas los traen con un parrafo
+    # pegado detras -«Not determined QSAR: no alerts foundConclusion:...»- y
+    # dejarlos crudos da 154 categorias de una sola fila a quien agrupe, y
+    # insignias de un parrafo a quien las pinte. El termino va siempre delante.
+    TERMINOS = ('Not determined', 'Not applicable', 'No data', 'Positive',
+                'Negative', 'Ambiguous', 'Other')
     # Para resolver las dos mitades de un mismo dictamen. No es una escala de
     # gravedad: es cuanto DICE cada respuesta.
     PESO_VEREDICTO = {'positive': 4, 'ambiguous': 3, 'negative': 2,
@@ -376,7 +441,16 @@ def main(ruta_oft, salida, version='OpenFoodTox 3.0 (Zenodo 19388272)'):
                 continue
             k, v = (x.strip() for x in parte.split(':', 1))
             if k.lower() in CAMPOS and v:
-                vs[k.lower()] = v
+                # El termino canonico, y aparte lo que venga detras.
+                for t in TERMINOS:
+                    if v.lower().startswith(t.lower()):
+                        resto = v[len(t):].strip(' .:;')
+                        vs[k.lower()] = t
+                        if resto:
+                            vs[k.lower() + '_nota'] = resto
+                        break
+                else:
+                    vs[k.lower()] = v
         if not vs:
             continue
         # SE AGRUPA POR DICTAMEN, NO POR FILA. Un mismo dictamen aporta dos
@@ -392,6 +466,9 @@ def main(ruta_oft, salida, version='OpenFoodTox 3.0 (Zenodo 19388272)'):
             'fecha': d.get('fecha'),
             'titulo': d.get('titulo'),
             'doi': d.get('doi'),
+            'panel': d.get('panel'),
+            'dominio': d.get('dominio'),
+            'piensos': d.get('piensos', False),
         })
         for k, v in vs.items():
             # Dentro del MISMO dictamen manda lo adverso: si una mitad mide un
@@ -425,16 +502,28 @@ def main(ruta_oft, salida, version='OpenFoodTox 3.0 (Zenodo 19388272)'):
             c = (conclusiones.get(u) or {}).get(clave) or {}
             d['ida_dictamen'] = c.get('ida')
             d['sin_ida_motivo_dictamen'] = c.get('sin_ida_motivo')
-        # El mas reciente que DIGA algo. Un dictamen sin fecha no puede
-        # desbancar a uno fechado: va al final.
+            d['evaluacion'] = c.get('evaluacion')
+            d['evaluacion_texto'] = c.get('evaluacion_texto')
+        # El mas reciente que DIGA algo, PREFIRIENDO los de alimentos. Un
+        # dictamen sin fecha no puede desbancar a uno fechado: va al final.
         dichos = [d for d in ds if d['hallazgo'] != 'sin-dato']
-        orden = sorted(dichos or ds,
+        candidatos = dichos or ds
+        comida = [d for d in candidatos if not d['piensos']]
+        orden = sorted(comida or candidatos,
+                       key=lambda d: (d['fecha'] or ''), reverse=True)
+        # El historial los lleva todos, tambien los de piensos: son parte de
+        # la historia del compuesto aunque no sean el dictamen que se cita.
+        resto = sorted([d for d in candidatos if d is not orden[0]],
                        key=lambda d: (d['fecha'] or ''), reverse=True)
         mejor = orden[0]
         otras_conclusiones = ({d['hallazgo'] for d in dichos}
                               - {mejor['hallazgo']})
         genotox[u] = {
-            **{c: mejor.get(c) for c in CAMPOS if mejor.get(c)},
+            # Los tres terminos y, si el fichero traia un parrafo pegado
+            # detras, su nota. Copiar solo CAMPOS dejaba las notas fuera.
+            **{k: mejor[k] for k in
+               [c for c in CAMPOS] + [c + '_nota' for c in CAMPOS]
+               if mejor.get(k)},
             'hallazgo': mejor['hallazgo'],
             'estudiado': mejor['hallazgo'] != 'sin-dato',
             # La otra mitad de la fila. Sin ella `hallazgo: positivo` se lee
@@ -442,17 +531,24 @@ def main(ruta_oft, salida, version='OpenFoodTox 3.0 (Zenodo 19388272)'):
             # lo contrario.
             'ida_dictamen': mejor['ida_dictamen'],
             'sin_ida_motivo_dictamen': mejor['sin_ida_motivo_dictamen'],
+            # Lo que CONCLUYO el panel en ese mismo dictamen, con su palabra.
+            'evaluacion': mejor['evaluacion'],
+            'evaluacion_texto': mejor['evaluacion_texto'],
             'fecha': mejor['fecha'],
             'dictamen': mejor['titulo'],
             'doi': mejor['doi'],
+            'panel': mejor['panel'],
+            'dominio': mejor['dominio'],
             'dictamenes': len(ds),
             # Dictamenes anteriores que concluyeron otra cosa. No es un error:
             # es la historia del aditivo, y conviene poder leerla.
             'discrepan': sorted(otras_conclusiones) or None,
             'historial': ([{k: d[k] for k in
                             ('fecha', 'hallazgo', 'titulo', 'doi',
-                             'ida_dictamen', 'sin_ida_motivo_dictamen')}
-                           for d in orden[1:]] if len(orden) > 1 else None),
+                             'ida_dictamen', 'sin_ida_motivo_dictamen',
+                             'evaluacion', 'evaluacion_texto',
+                             'panel', 'dominio')}
+                           for d in resto] if resto else None),
         }
 
     ahora = datetime.now(timezone.utc).isoformat()
@@ -517,6 +613,13 @@ def main(ruta_oft, salida, version='OpenFoodTox 3.0 (Zenodo 19388272)'):
     print(f'      con IDA fijada en ESE dictamen  : {con_ida_dict}')
     print(f'      con motivo de no fijarla        : {sum(motivos_dict.values())}')
     for k, n in sorted(motivos_dict.items(), key=lambda x: -x[1]):
+        print(f'         {n:>4}  {k}')
+    evals = {}
+    for d in genotox.values():
+        if d['evaluacion']:
+            evals[d['evaluacion']] = evals.get(d['evaluacion'], 0) + 1
+    print(f'      con CONCLUSION del panel        : {sum(evals.values())}')
+    for k, n in sorted(evals.items(), key=lambda x: -x[1]):
         print(f'         {n:>4}  {k}')
     varios = sum(1 for d in genotox.values() if d['dictamenes'] > 1)
     discrepan = sum(1 for d in genotox.values() if d['discrepan'])

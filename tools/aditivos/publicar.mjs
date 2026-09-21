@@ -416,9 +416,46 @@ function main(dir, salida) {
     ['hallazgo', 'STRING', (d) => texto(d.genotox?.hallazgo)],
     // null = no hay ningun expediente. false = los hay y ninguno lo midio.
     ['estudiado', 'BOOLEAN', (d) => (d.genotox == null ? null : !!d.genotox.estudiado)],
+    /*
+     * Los tres puntos finales traen SOLO el termino canonico -Positive,
+     * Negative, Ambiguous, No data, Not determined, Not applicable, Other-.
+     * 154 filas del fichero de EFSA lo traen con un parrafo pegado detras
+     * («Not determined QSAR: no alerts foundConclusion:...») y dejarlo crudo
+     * daba 154 categorias de una sola fila a quien agrupara e insignias de un
+     * parrafo a quien las pintara. El parrafo va en la columna `_nota`.
+     */
     ['hallazgo_genotoxico', 'STRING', (d) => texto(d.genotox?.genotoxic)],
+    ['hallazgo_genotoxico_nota', 'STRING', (d) => texto(d.genotox?.genotoxic_nota)],
     ['hallazgo_mutagenico', 'STRING', (d) => texto(d.genotox?.mutagenic)],
+    ['hallazgo_mutagenico_nota', 'STRING', (d) => texto(d.genotox?.mutagenic_nota)],
     ['hallazgo_carcinogenico', 'STRING', (d) => texto(d.genotox?.carcinogenic)],
+    ['hallazgo_carcinogenico_nota', 'STRING',
+     (d) => texto(d.genotox?.carcinogenic_nota)],
+    /*
+     * LA CONCLUSION DEL PANEL, que si existe. Se dijo que no y era falso: se
+     * busco en END_SUM y en la justificacion de `NoAllocated`, y vive en la
+     * de los otros valores de referencia, con prefijo codificado
+     * -«Assessment: some concern; Remarks: ...»- en 6.013 filas.
+     *
+     * Esto NO es `hallazgo`. Aquel resume lo que encontraron los estudios;
+     * esto es lo que concluyo el panel. El dioxido de titanio lo ilustra
+     * entero: hallazgo positivo Y «Assessment: some concern», con el texto
+     * diciendo que «E 171 can no longer be considered as safe when used as a
+     * food additive». Es el dictamen que lo saco de la lista de la Union.
+     *
+     * `evaluacion_texto` va al lado para poder comprobar la etiqueta.
+     */
+    ['evaluacion', 'STRING', (d) => texto(d.genotox?.evaluacion)],
+    ['evaluacion_texto', 'STRING', (d) => texto(d.genotox?.evaluacion_texto)],
+    /*
+     * Quien lo evaluo y en que contexto. EFSA dictamina tambien sobre
+     * PIENSOS, y esos dictamenes salen mezclados con los de alimentos: el de
+     * piensos del dioxido de titanio es 41 dias mas reciente que el de
+     * alimentos, asi que ordenar por fecha citaba el equivocado. Se prefiere
+     * el que no es de FEEDAP; los de piensos siguen en `oft_historial`.
+     */
+    ['panel', 'STRING', (d) => texto(d.genotox?.panel)],
+    ['dominio', 'STRING', (d) => texto(d.genotox?.dominio)],
     ['hallazgo_fecha', 'STRING', (d) => texto(d.genotox?.fecha)],
     ['hallazgo_dictamen', 'STRING', (d) => texto(d.genotox?.dictamen)],
     ['hallazgo_doi', 'STRING', (d) => texto(d.genotox?.doi)],
@@ -433,6 +470,8 @@ function main(dir, salida) {
     ['ida_dictamen', 'DOUBLE', (d) => numero(d.genotox?.ida_dictamen)],
     ['sin_ida_motivo_dictamen', 'STRING',
      (d) => texto(d.genotox?.sin_ida_motivo_dictamen)],
+    // TODOS los dictamenes, incluido el que se cita aqui. `oft_historial`
+    // trae los OTROS, asi que su recuento es este menos uno.
     ['dictamenes_total', 'INT32', (d) => numero(d.genotox?.dictamenes)],
     // ¿Hay dictamenes en desacuerdo? Y cuales fueron los otros hallazgos.
     ['dictamenes_discrepan', 'BOOLEAN',
@@ -466,6 +505,10 @@ function main(dir, salida) {
     ['doi', 'STRING', (r) => texto(r.doi)],
     ['ida_dictamen', 'DOUBLE', (r) => numero(r.ida_dictamen)],
     ['sin_ida_motivo_dictamen', 'STRING', (r) => texto(r.sin_ida_motivo_dictamen)],
+    ['evaluacion', 'STRING', (r) => texto(r.evaluacion)],
+    ['evaluacion_texto', 'STRING', (r) => texto(r.evaluacion_texto)],
+    ['panel', 'STRING', (r) => texto(r.panel)],
+    ['dominio', 'STRING', (r) => texto(r.dominio)],
   ]);
 
   tabla(salida, 'iarc', D.iarc, [
