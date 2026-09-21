@@ -190,10 +190,22 @@ function main(dir, salida) {
    */
   const porTag = {};
   for (const t of tags) porTag[t.tag] = (porTag[t.tag] || 0) + 1;
+  /*
+   * OJO AL GRANO: esta tabla tiene una fila por pareja (tag, item), pero sus
+   * columnas no varian todas igual. `nombre` y `nombre_en` vienen de Open Food
+   * Facts y son DEL TAG: dos items que comparten tag traen el mismo nombre.
+   * `items`, `con_evidencia` y `declara_numero_e` son DEL ITEM.
+   *
+   * La asimetria es una trampa y ya mordio a un consumidor: usar `nombre` como
+   * nombre a mostrar arregla las 183 sustancias sin etiqueta española en
+   * Wikidata y rompe justo los 135 tags compartidos, donde las dos fichas
+   * pasan a llamarse igual. Para esos hay que ir al nombre del item.
+   */
   tabla(salida, 'aditivo_tags', tags, [
     ['wikidata', 'STRING', (r) => r.wikidata],
     ['tag', 'STRING', (r) => r.tag],
     ['numero_e', 'STRING', (r) => texto(r.e_number)],
+    // Del TAG, no del item.
     ['nombre', 'STRING', (r) => texto(r.nombre)],
     ['nombre_en', 'STRING', (r) => texto(r.nombre_en)],
     ['via', 'STRING', (r) => texto(r.via)],
