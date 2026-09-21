@@ -26,6 +26,27 @@ búsquedas reales, y ninguna lleva aquí porque esa información no tiene URL.
 
 ## Lo que ya está hecho
 
+**El idioma del SEO es el inglés**, y es una decisión tomada a sabiendas del
+desajuste: la interfaz es española. El razonamiento es que la asimetría de
+búsqueda va en una sola dirección — la mayoría de las búsquedas sobre aditivos
+y números E se hacen en inglés, y quien busca en español suele encontrar
+igualmente el resultado en inglés, mientras que al revés no ocurre.
+
+Dos cosas se quedan en español, y no por descuido:
+
+- **`<html lang="es">`.** Ese atributo no es una señal de buscador: es lo que
+  hace que un lector de pantalla pronuncie el texto de la interfaz con fonética
+  española. Cambiarlo rompería la accesibilidad de usuarios reales a cambio de
+  una señal marginal.
+- **`inLanguage` del nodo `Dataset`** declara `["en", "es"]`, porque es la
+  verdad: `nombre_en` está en inglés, `gravedad.descripcion` en español y el
+  `verbo` de las normas europeas en inglés. La descripción del dataset sí va en
+  inglés; el campo que dice qué idioma tiene el contenido no puede mentir.
+
+El `<noscript>` —lo único que ve un rastreador que no ejecuta JavaScript— va en
+los dos idiomas: inglés porque es el del SEO, español porque es el de quien
+acabe leyéndolo.
+
 **Cabecera completa** en `index.html`: canónica absoluta, `robots`, Open Graph
 con imagen, Twitter card y licencia. La canónica es absoluta a propósito aunque
 `base` sea relativa: el mismo contenido se sirve desde Pages, desde una copia
@@ -74,8 +95,12 @@ Por qué merece la pena:
 
 Lo que hay que decidir antes de hacerlo:
 
-- **Idioma.** Hoy todo es español. Hacerlo bilingüe multiplica por dos las
-  páginas y obliga a `hreflang`; hacerlo sólo en español limita el alcance.
+- ~~**Idioma.**~~ **Decidido: inglés, y sólo inglés.** Sin `hreflang` y sin
+  versión española, por la asimetría de búsqueda explicada arriba. Además el
+  inglés cubre mejor el dato: **671 de 671** aditivos tienen `nombre_en` frente
+  a **447** con `nombre_es`, y el texto literal de las normas europeas ya está
+  en inglés. `gravedad.descripcion` sí habrá que traducirlo, que es vocabulario
+  propio.
 - **Qué se dice de los 56 sin nada que contar** —los que no tienen ni estado
   legal ni evaluación—. Publicar una página que dice «no consta nada» 56 veces
   es exactamente el contenido delgado que un buscador penaliza. Lo sensato es

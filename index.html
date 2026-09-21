@@ -1,4 +1,15 @@
 <!doctype html>
+<!--
+  `lang` se queda en español y NO es una incoherencia con el SEO en inglés.
+  Este atributo no es una señal de buscador: es lo que hace que un lector de
+  pantalla pronuncie el texto de la interfaz con fonética española. La interfaz
+  es española, así que cambiarlo a `en` rompería la accesibilidad de usuarios
+  reales a cambio de una señal marginal.
+
+  El resto de metadatos va en inglés a propósito: la mayoría de las búsquedas
+  sobre aditivos y números E se hacen en inglés, y quien busque en español
+  suele encontrar igualmente el resultado en inglés — no al revés.
+-->
 <html lang="es">
   <head>
     <meta charset="utf-8" />
@@ -8,11 +19,11 @@
     <meta name="color-scheme" content="light dark" />
     <meta
       name="description"
-      content="Escanea el código de barras de un producto y obtén una puntuación de salud abierta y auditable, basada en Nutri-Score 2023, NOVA, evaluaciones de aditivos de EFSA y el modelo de perfil de nutrientes de la OPS."
+      content="Scan a food barcode and get an open, auditable 0–100 health score: Nutri-Score 2023, NOVA processing, the PAHO nutrient profile model and additive hazard data from EFSA, IARC and the EU CLP Regulation. Runs entirely in your browser."
     />
     <link rel="icon" href="icons/favicon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="icons/icon-192.png" />
-    <title>Veskan — análisis nutricional por código de barras</title>
+    <title>Veskan — food health score and E number check by barcode</title>
 
     <!--
       La canónica es absoluta a propósito, aunque `base` sea relativa: el
@@ -27,17 +38,18 @@
 
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="Veskan" />
-    <meta property="og:locale" content="es_ES" />
+    <meta property="og:locale" content="en_US" />
+    <meta property="og:locale:alternate" content="es_ES" />
     <meta property="og:url" content="https://jmtt89.github.io/veskan/" />
-    <meta property="og:title" content="Veskan — análisis nutricional por código de barras" />
+    <meta property="og:title" content="Veskan — food health score and E number check by barcode" />
     <meta
       property="og:description"
-      content="Escanea el código de barras de un producto y obtén una puntuación de salud abierta y auditable, basada en Nutri-Score 2023, NOVA, evaluaciones de aditivos de EFSA y el modelo de perfil de nutrientes de la OPS. Todo el cálculo ocurre en tu navegador."
+      content="Scan a food barcode and get an open, auditable 0–100 health score: Nutri-Score 2023, NOVA processing, the PAHO nutrient profile model and additive hazard data from EFSA, IARC and the EU CLP Regulation. Every calculation runs in your browser — nothing you scan is sent anywhere."
     />
     <meta property="og:image" content="https://jmtt89.github.io/veskan/icons/icon-512.png" />
     <meta property="og:image:width" content="512" />
     <meta property="og:image:height" content="512" />
-    <meta property="og:image:alt" content="Icono de Veskan" />
+    <meta property="og:image:alt" content="Veskan icon" />
     <meta name="twitter:card" content="summary" />
     <!--
       Datos estructurados. Tres cosas distintas y por eso tres nodos:
@@ -68,45 +80,47 @@
             "isAccessibleForFree": true,
             "offers": { "@type": "Offer", "price": "0", "priceCurrency": "EUR" },
             "license": "https://www.gnu.org/licenses/agpl-3.0.html",
-            "description": "Escanea el código de barras de un producto y obtén una puntuación de salud de 0 a 100, abierta y auditable. El análisis se ejecuta entero en el navegador, sin servidor y sin enviar lo que escaneas a ningún sitio.",
+            "description": "Scan a food barcode and get an open, auditable health score from 0 to 100. Every calculation runs in the browser: there is no server, and nothing you scan is sent anywhere.",
             "featureList": [
               "Nutri-Score 2023",
-              "Clasificación NOVA de procesamiento",
-              "Modelo de perfil de nutrientes de la OPS",
-              "Evaluación de aditivos con datos de EFSA, IARC y el Reglamento CLP",
-              "Funciona sin conexión"
+              "NOVA food processing classification",
+              "PAHO nutrient profile model",
+              "Additive hazard data from EFSA, IARC and the EU CLP Regulation",
+              "Works offline"
             ]
           },
           {
             "@type": "Dataset",
             "@id": "https://github.com/jmtt89/veskan-data/tree/aditivos#dataset",
-            "name": "Base de peligro de aditivos alimentarios",
-            "description": "671 aditivos alimentarios con su nivel de peligro, la certeza de esa evaluación y de dónde sale: ingestas diarias admisibles y efectos críticos de EFSA OpenFoodTox, clasificaciones de la IARC, clasificaciones CMR del Anexo VI del Reglamento CLP, estado en el Reglamento (CE) 1333/2008 y prohibiciones y retiradas por jurisdicción, con la frase literal de cada norma.",
+            "name": "Food additive hazard database",
+            "description": "671 food additives with a hazard level, the certainty behind it and where it comes from: acceptable daily intakes and critical effects from EFSA OpenFoodTox, IARC carcinogenicity classifications, CMR classifications from Annex VI of the EU CLP Regulation, status under Regulation (EC) 1333/2008, and bans and withdrawals per jurisdiction with the literal wording of each act. Prohibition and withdrawal are kept apart, and so are the study findings of an EFSA dossier and the conclusion of its Panel.",
             "url": "https://github.com/jmtt89/veskan-data/tree/aditivos",
-            "inLanguage": "es",
+            "inLanguage": ["en", "es"],
             "license": "https://opendatacommons.org/licenses/odbl/1-0/",
             "isAccessibleForFree": true,
             "creator": { "@type": "Organization", "name": "Veskan" },
             "keywords": [
-              "aditivos alimentarios",
-              "números E",
+              "food additives",
+              "E numbers",
               "EFSA",
               "IARC",
-              "seguridad alimentaria",
-              "OpenFoodTox"
+              "food safety",
+              "OpenFoodTox",
+              "acceptable daily intake",
+              "food additive bans"
             ],
             "distribution": [
               {
                 "@type": "DataDownload",
                 "encodingFormat": "application/vnd.apache.parquet",
                 "contentUrl": "https://raw.githubusercontent.com/jmtt89/veskan-data/aditivos/index.json",
-                "description": "17 tablas en Parquet, consultables sin servidor. `index.json` lista cada una con su tamaño y su número de filas."
+                "description": "17 Parquet tables, queryable without a server over HTTP range requests. index.json lists every table with its size and row count."
               },
               {
                 "@type": "DataDownload",
                 "encodingFormat": "application/vnd.sqlite3",
                 "contentUrl": "https://raw.githubusercontent.com/jmtt89/veskan-data/aditivos/aditivos.sqlite3",
-                "description": "El corte resuelto por número E que consume la aplicación."
+                "description": "The slice resolved by E number that the application consumes."
               }
             ]
           },
@@ -125,7 +139,15 @@
   <body>
     <div id="app">
       <noscript>
-        <p style="padding: 2rem; text-align: center">
+        <!--
+          Lo único que ve un rastreador que no ejecuta JavaScript. Va en los
+          dos idiomas: en inglés porque es el idioma del SEO, y en español
+          porque es el de la interfaz y el de quien acabe leyéndolo de verdad.
+        -->
+        <p style="padding: 2rem; text-align: center" lang="en">
+          Veskan needs JavaScript: the whole analysis runs in your browser, with no server.
+        </p>
+        <p style="padding: 0 2rem 2rem; text-align: center">
           Veskan necesita JavaScript: todo el análisis se ejecuta en tu navegador, sin servidor.
         </p>
       </noscript>
