@@ -142,10 +142,35 @@ function main(dir, salida) {
   // cosas.
   const tags = [];
   for (const d of D.aditivos) {
+    // ¿Este item concreto lleva evidencia de peligro, o esta vacio? Es lo que
+    // distingue a las dos entidades que reclaman el mismo numero E.
+    const conEvidencia = !!(d.gravedad?.nivel != null || d.iarc || d.clp
+                            || d.oft?.valor || d.oft?.critico);
     for (const t of d.enlaces?.off || []) {
-      tags.push({ wikidata: d._id, ...t });
+      tags.push({ wikidata: d._id, con_evidencia: conEvidencia, ...t });
     }
   }
+  /*
+   * Cuantos items reclaman cada tag, y cual de ellos lleva los datos.
+   *
+   * POR QUE HACE FALTA. 135 numeros E estan reclamados por mas de un item de
+   * Wikidata, y en 49 de ellos unos llevan evidencia y otros no. El talco es
+   * el caso feo: `en:e553b` lo reclaman dos entidades que Wikidata separa a
+   * proposito —`Q134583` es la especie mineral aprobada por la IMA, con 74
+   * enlaces a Wikipedia y nombre en español; `Q108584660` es el compuesto
+   * quimico, con CAS, InChI, PubChem y la clasificacion IARC 2A—. No son un
+   * duplicado y fundirlos seria incorrecto.
+   *
+   * El problema es de lectura: quien busque «talco» aterriza en la entidad
+   * con nombre y se va creyendo que no consta nada, porque la evaluacion esta
+   * en la hermana sin nombre. Pasa en cuatro tags —E553b, E331, E952, E558—.
+   *
+   * Con estas dos columnas se resuelve sin elegir por el consumidor: agrupa
+   * por `tag`, mira `items` para saber que hay mas de uno, y quedate con las
+   * filas donde `con_evidencia` es cierto.
+   */
+  const porTag = {};
+  for (const t of tags) porTag[t.tag] = (porTag[t.tag] || 0) + 1;
   tabla(salida, 'aditivo_tags', tags, [
     ['wikidata', 'STRING', (r) => r.wikidata],
     ['tag', 'STRING', (r) => r.tag],
@@ -153,6 +178,8 @@ function main(dir, salida) {
     ['nombre', 'STRING', (r) => texto(r.nombre)],
     ['nombre_en', 'STRING', (r) => texto(r.nombre_en)],
     ['via', 'STRING', (r) => texto(r.via)],
+    ['items', 'INT32', (r) => porTag[r.tag] || 1],
+    ['con_evidencia', 'BOOLEAN', (r) => !!r.con_evidencia],
   ]);
 
   // --- gravedad ------------------------------------------------------------
@@ -386,7 +413,24 @@ function main(dir, salida) {
     ['significado', 'STRING', (d) => texto(d.significado)],
     ['cas', 'STRING', (d) => lista(d.cas)],
     ['volumen', 'STRING', (d) => lista(d.volumen)],
-    ['anio', 'STRING', (d) => texto(d.anio)],
+    /*
+     * El anio se parte en numero y nota, y no es un capricho: IARC escribe 72
+     * de las 1.060 filas como «2025 online» -la monografia publicada en linea
+     * antes que el volumen impreso-, asi que la columna no podia ser un
+     * entero. Se publico como entero, luego como texto para que cupieran, y
+     * ese cambio de tipo rompio a quien ordenaba por ella.
+     *
+     * Partirlo devuelve las dos cosas: `anio` vuelve a ser ordenable y
+     * comparable, y `anio_nota` conserva el matiz en vez de tirarlo.
+     */
+    ['anio', 'INT32', (d) => {
+      const m = /(\d{4})/.exec(String(d.anio ?? ''));
+      return m ? Number(m[1]) : null;
+    }],
+    ['anio_nota', 'STRING', (d) => {
+      const t = String(d.anio ?? '').replace(/\d{4}/, '').trim();
+      return t || null;
+    }],
     ['anio_evaluacion', 'INT32', (d) => numero(d.anio_evaluacion)],
     // 95 registros aclaran QUE abarca la clasificacion, y eso cambia como se
     // leen: el del talco dice que el termino incluye fibras asbestiformes.
